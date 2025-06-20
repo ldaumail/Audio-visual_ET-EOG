@@ -41,14 +41,14 @@ for i =1:length(names)
     yR = yRight/pixperdeg; %convert from pixels to degrees
 
     %remove blinks
-    % pupSize = edfDat.Samples.pupilSize;
-    % [eyePosL,blinksL] = removeBlinks(xL,yL, pupSize); %detect blinks and replace them by NaNs
-    % xL = eyePosL(1,:);
-    % yL = eyePosL(2,:);
-    % [eyePosR,blinksR] = removeBlinks(xR,yR, pupSize); %detect blinks and replace them by NaNs
-    % xR = eyePosR(1,:);
-    % yR = eyePosR(2,:);
-    % 
+    pupSize = edfDat.Samples.pupilSize;
+    [eyePosL,blinksL] = removeBlinks(xL,yL, pupSize(:,1)); %detect blinks and replace them by NaNs
+    xL = eyePosL(1,:);
+    yL = eyePosL(2,:);
+    [eyePosR,blinksR] = removeBlinks(xR,yR, pupSize(:,2)); %detect blinks and replace them by NaNs
+    xR = eyePosR(1,:);
+    yR = eyePosR(2,:);
+
     % xR(xR > 1000000) = 0;
     % yR(yR > 1000000) = 0;
 
@@ -119,35 +119,35 @@ for i =1:length(names)
 
 
         end
-        %plot x/y data
-        xax = (1:size(origX,1))./1000;
-        figure('Position',[100 100 1200 600]); %
-        subplot(2,1,1)
-        plot(xax,origX(:,:,c,1),'LineWidth', 1)
-        xlabel("Time (s)")
-        ylabel("Horizontal Displacement (deg)")
-        title("Left eye")
-        subplot(2,1,2)
-        plot(xax,origX(:,:,c,2),'LineWidth', 1)
-        xlabel("Time (s)")
-        ylabel("Horizontal Displacement (deg)")
-        title("Right eye")
-
-        sgtitle(strcat(conds{c}),'fontweight','bold','Interpreter', 'none')
-        plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
-        saveas(gcf,strcat(plotdir, sprintf('%s_%s_left_right_eye_electrooculogram_deg_%s.jpg',name,conds{c},version)));
+        % %plot x/y data
+        % xax = (1:size(origX,1))./1000;
+        % figure('Position',[100 100 1200 600]); %
+        % subplot(2,1,1)
+        % plot(xax,origX(:,:,c,1),'LineWidth', 1)
+        % xlabel("Time (s)")
+        % ylabel("Horizontal Displacement (deg)")
+        % title("Left eye")
+        % subplot(2,1,2)
+        % plot(xax,origX(:,:,c,2),'LineWidth', 1)
+        % xlabel("Time (s)")
+        % ylabel("Horizontal Displacement (deg)")
+        % title("Right eye")
+        % 
+        % sgtitle(strcat(conds{c}),'fontweight','bold','Interpreter', 'none')
+        % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
+        % saveas(gcf,strcat(plotdir, sprintf('%s_%s_left_right_eye_electrooculogram_deg_%s.jpg',name,conds{c},version)));
         
     end
 
 
 
-    % subj = sprintf('sub0%d',i);
-    % data.(char(speed)).(subj).origx = origX; %origx and origy are all trials after blink removal, and before removing outliers
-    % data.(char(speed)).(subj).origy = origY;
-    % 
-    % data.(char(speed)).(subj).meanadjx = xpTr; %xpTr had outlier trials removed
-    % data.(char(speed)).(subj).meanadjy = ypTr;
-    % data.(char(speed)).(subj).blinkTrs = blinkTrs;
+    subj = sprintf('sub0%d',i);
+    data.(subj).origx = origX; %origx and origy are all trials after blink removal, and before removing outliers
+    data.(subj).origy = origY;
+
+    % data.(subj).meanadjx = xpTr; %xpTr had outlier trials removed
+    % data.(subj).meanadjy = ypTr;
+    data.(subj).blinkTrs = blinkTrs;
 
 
     % [data.(char(speed)).(subj).eyeMovDat,cOrigX,cOrigY] = eyeMovDetectTr(folderDir,char(subj),xpTr(1000+length(oscillRedDotPts):17000,:,:), ypTr(1000+length(oscillRedDotPts):17000,:,:), blinkTrs(1000+length(oscillRedDotPts):17000,:,:), samplerate, conds);
@@ -157,3 +157,134 @@ for i =1:length(names)
 
 
 end
+
+
+
+%% Sort data based on speed
+
+n_reps_per_speed = 10; %roughly the amount of trials with the same speed (on the higher end)
+n_speeds = 16; %number of speeds for a given condition
+for i =1:length(names)
+    name = names{i};
+    conds = exptDat.ex.conds;
+    edfConds = edfDat.Events.Messages.info(contains(edfDat.Events.Messages.info, conds));
+
+    xeyeDat = data.(subj).origx;
+    yeyeDat = data.(subj).origy;
+
+    origX = nan((1+max(exptDat.ex.trialdur))*samplerate, n_reps_per_speed, n_speeds, length(exptDat.ex.conds),2);
+    origY = nan((1+max(exptDat.ex.trialdur))*samplerate, n_reps_per_speed, n_speeds, length(exptDat.ex.conds),2);
+
+    for c =1:length(conds)
+        driftingSpeedsCond = exptDat.ex.driftingSpeeds(contains(edfConds, conds(c))); %all drifting speeds of all trials for a given condition (speed varies across trials)
+        speeds = unique(driftingSpeedsCond);
+
+        for s =1:length(speeds)
+
+            xeyeTrs = xeyeDat(:,driftingSpeedsCond == speeds(s),c,:);
+            yeyeTrs = yeyeDat(:,driftingSpeedsCond == speeds(s),c,:);
+
+            origX(:,1:size(xeyeTrs,2),s,c,:) = xeyeTrs;
+            origY(:,1:size(yeyeTrs,2),s,c,:) = yeyeTrs;
+
+        end
+
+    end
+    subj = sprintf('sub0%d',i);
+    sorted_data.(subj).origx = origX; %origx and origy are all trials after blink removal, and before removing outliers
+    sorted_data.(subj).origy = origY;
+
+end
+
+
+%% Eye position error relative to the target
+
+%horizontal 
+% oscillRedDotPts =[0:1/1000:timeOn/60];
+% flipTimes = 0:1/samplerate:exptDat.ex.blockLength-exptDat.ex.trialFixation;
+% flipTimes = flipTimes(1:length(flipTimes)-1);
+
+AVGmatRelPos = nan(n_speeds,length(exptDat.ex.conds),2, length(names) ); %
+percentExcluded = nan(n_speeds,length(exptDat.ex.conds),2, length(names));
+for i =1:length(names)
+    %     if ~isnan(lag(i))
+    subj = sprintf('sub0%d',i);
+    name = names{i};
+    % folderDir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/data/',...
+    %     sprintf('v%s/%s_v%s',version, name,version), '/');
+    %
+    % fileNames = dir(folderDir);
+    % exptName = strcat(folderDir,fileNames(contains(fileNames,'.mat')));
+    % exptDat = load(exptName);
+
+    trRelPos = nan(max(exptDat.ex.trialdur)*samplerate, size(origX,2), length(speeds), length(exptDat.ex.conds),2);
+
+    for c = 1:length(exptDat.ex.conds) %condition number
+        for s =1:length(speeds)
+            for t =1:size(sorted_data.(subj).origx,2) %trial number
+
+                if contains(exptDat.ex.conds(c), "Left" )%If cond is visual leftward
+                    stimPos = [(-1)*(-exptDat.ex.dot_displacement_deg:speeds(s)/samplerate:exptDat.ex.dot_displacement_deg)];
+
+                elseif contains(exptDat.ex.conds(c), "Right" )%If cond is visual rightward
+                    stimPos = [(1)*(-exptDat.ex.dot_displacement_deg:speeds(s)/samplerate:exptDat.ex.dot_displacement_deg)];
+
+                end
+
+                if contains(exptDat.ex.conds(c), "Vis" )
+                    xEye = sorted_data.(subj).origx(samplerate+1:samplerate+length(stimPos)-1,t,s,c,:); %
+                else
+                    xEye = sorted_data.(subj).origx(1:length(stimPos)-1,t,s,c,:); %
+                end
+
+
+                relPos = (squeeze(xEye(1:end,1,1,1,:))'- stimPos(1:end-1)).^2;
+                trRelPos(1:length(relPos),t,s,c,:) = relPos';
+            end
+            AVGmatRelPos(s,c,:,i) = squeeze(mean(sqrt(sum(trRelPos(:,:,s,c,:),2,'omitnan'))./sum(~isnan(trRelPos(:,:,s,c,:)),2,'omitnan'), 'omitnan'));
+        end
+    end
+end
+
+% %check for outliers
+% standardDev = std(AVGmatRelPos,[],2, 'omitnan');
+% meanTL = nanmean(AVGmatRelPos, 2);
+% 
+% lowInt = meanTL - 3*standardDev;
+% highInt = meanTL + 3*standardDev;
+% goodData = AVGmatRelPos > lowInt & AVGmatRelPos < highInt;
+% 
+% %Exclude outliers
+% for c = 1:length(exptDat.ex.conds)
+%     for i =1:length(names)
+%         if goodData(c,i) == 1
+%             AVGmatRelPos(c,i) =  AVGmatRelPos(c,i);
+%         else
+%             AVGmatRelPos(c,i) = NaN;
+%         end
+%     end
+% end
+% 
+% saveDir = "/Users/loicdaumail/Documents/Research_MacBook/Tong_Lab/Projects/smooth_pursuit/curated_data";
+% mkdir(saveDir);
+% save(strcat(saveDir,"/horizontal_eyepos_error_on_vs_between.mat"), "AVGmatRelPos")
+
+%% Plot
+
+conditions = {'Dim Phantom On','Dim Phantom Between','Light Phantom On','Light Phantom Between', 'Phantom Control Dark Line', 'Phantom Control Light Line'}; 
+
+yvar = AVGmatRelPos;
+ylab = {'Horizontal eye position error relative to target (deg)'};
+singleBarPlotSEM(yvar,conditions, ylab, [0 0.25])
+ 
+% singleBarLinePlotSEM(yvar,conditions, ylab, [0 0.80])
+plotdir = strcat('/Users/loicdaumail/Documents/Research_MacBook/Tong_Lab/Projects/smooth_pursuit/anal_plots/stripe_vs_between_stripes/');
+mkdir(plotdir);
+saveas(gcf,strcat(plotdir, sprintf('pearson_time_lag_horizontal_error_bar_plot_on_between.svg')));
+
+
+
+
+%% Load .acq data from BIOPAC
+
+acq_data = load(strcat(folderDir, sprintf('%s_audio_visual_motion_v%s_date20250609_run1.mat', name, version)));

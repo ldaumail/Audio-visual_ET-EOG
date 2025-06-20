@@ -17,13 +17,8 @@ ys = yPos;
 % figure()
 % subplot(3,1,1)
 % plot(xs,ys);
-%1) find the x value of the blink = common value across data. if we
-%find 2 chunks with same value ==> it may be a blink value!
-% if nnz(xPos >= 10000)
-%     sameX = unique(xPos(abs(xPos) >= 10000));
-% end
 
-%2) find wherever the pupil size is 0
+%1) find wherever the pupil size is 0
 blinkX = ismember(pupilSize, 0); %see where blinks occur (pupil size ==0)
 lowBound = find(blinkX)- 150; %blink onset time may be 150ms before pupil size = 0
 validLB = lowBound > 0;
@@ -31,31 +26,20 @@ highBound = find(blinkX) + 150; %blink offset time may be 150ms after pupil size
 validHB = highBound < length(pupilSize);
 lowBound = lowBound(validLB & validHB);
 highBound = highBound(validLB & validHB);
-% onOff = find(diff(blinkX)); %blink onsets and blink offsets
-% blinkOn = onOff(mod(find(onOff),2)==1);
-% blinkOff = onOff(mod(find(onOff),2)==0);
-% dur = diff(onOff);
-% blinkOn = edfDat.Events.Eblink.start;
-% blinkOff = edfDat.Events.Eblink.end;
-% dur = blinkOn - blinkOff;
+
 % figure();
 % h = histogram(dur, 'NumBins', 50, 'Normalization','probability', 'EdgeColor', 'b', 'FaceColor', 'b');
 % hold on
 % xline(mean(dur), 'Color', 'r', 'LineWidth', 2);
 % hold on
 % xline(median(dur), 'Color', 'k', 'LineWidth', 2);
-% lowBound = blinkOn- 150; %blink onset time may be 120ms before pupil size = 0
-% validLB = lowBound > 0;
-% highBound = find(blinkOff) + 150; %blink offset time may be 120ms after pupil size = 0
-% validHB = highBound < length(pupilSize);
-
 
 %the above step will make some bounds pretty redundant, but will ensure
 %removal of all blink times.
 
 
 %3) eliminate all blinks from all data
-% same =ismember(xs,sameX);
+
 % xs(same) = NaN;
 % subplot(3,1,2)
 % plot(xs,ys)
