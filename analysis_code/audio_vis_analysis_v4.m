@@ -204,30 +204,21 @@ end
 % flipTimes = 0:1/samplerate:exptDat.ex.blockLength-exptDat.ex.trialFixation;
 % flipTimes = flipTimes(1:length(flipTimes)-1);
 
-AVGmatRelPos = nan(n_speeds,length(exptDat.ex.conds),2, length(names) ); %
-percentExcluded = nan(n_speeds,length(exptDat.ex.conds),2, length(names));
+trRelPos = nan(max(exptDat.ex.trialdur)*samplerate, size(origX,2), length(speeds), length(exptDat.ex.conds),2, length(names));
+
 for i =1:length(names)
-    %     if ~isnan(lag(i))
     subj = sprintf('sub0%d',i);
     name = names{i};
-    % folderDir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/data/',...
-    %     sprintf('v%s/%s_v%s',version, name,version), '/');
-    %
-    % fileNames = dir(folderDir);
-    % exptName = strcat(folderDir,fileNames(contains(fileNames,'.mat')));
-    % exptDat = load(exptName);
-
-    trRelPos = nan(max(exptDat.ex.trialdur)*samplerate, size(origX,2), length(speeds), length(exptDat.ex.conds),2);
 
     for c = 1:length(exptDat.ex.conds) %condition number
         for s =1:length(speeds)
             for t =1:size(sorted_data.(subj).origx,2) %trial number
 
                 if contains(exptDat.ex.conds(c), "Left" )%If cond is visual leftward
-                    stimPos = [(-1)*(-exptDat.ex.dot_displacement_deg:speeds(s)/samplerate:exptDat.ex.dot_displacement_deg)];
+                    stimPos = (-1)*(-exptDat.ex.dot_displacement_deg:speeds(s)/samplerate:exptDat.ex.dot_displacement_deg);
 
                 elseif contains(exptDat.ex.conds(c), "Right" )%If cond is visual rightward
-                    stimPos = [(1)*(-exptDat.ex.dot_displacement_deg:speeds(s)/samplerate:exptDat.ex.dot_displacement_deg)];
+                    stimPos = (1)*(-exptDat.ex.dot_displacement_deg:speeds(s)/samplerate:exptDat.ex.dot_displacement_deg);
 
                 end
 
@@ -237,29 +228,49 @@ for i =1:length(names)
                     xEye = sorted_data.(subj).origx(1:length(stimPos)-1,t,s,c,:); %
                 end
 
+                % figure();
+                % plot(stimPos)
+                % hold on
+                % plot(squeeze(xEye(:,1,1,1,2)))
+                % 
+
 
                 relPos = (squeeze(xEye(1:end,1,1,1,:))'- stimPos(1:end-1)).^2;
                 trRelPos(1:length(relPos),t,s,c,:) = relPos';
             end
-            AVGmatRelPos(s,c,:,i) = squeeze(mean(sqrt(sum(trRelPos(:,:,s,c,:),2,'omitnan'))./sum(~isnan(trRelPos(:,:,s,c,:)),2,'omitnan'), 'omitnan'));
+
         end
+    end
+    combtrRelPos(:,:,:,1,:,i) = [trRelPos(:,:,:,1,:,i), trRelPos(:,:,:,2,:,i)];
+    combtrRelPos(:,:,:,2,:,i) = [trRelPos(:,:,:,3,:,i), trRelPos(:,:,:,4,:,i)];
+    combtrRelPos(:,:,:,3,:,i) = [trRelPos(:,:,:,5,:,i), trRelPos(:,:,:,6,:,i)];
+    combtrRelPos(:,:,:,4,:,i) = [trRelPos(:,:,:,7,:,i), trRelPos(:,:,:,8,:,i)];
+    combtrRelPos(:,:,:,5,:,i) = [trRelPos(:,:,:,9,:,i), trRelPos(:,:,:,10,:,i)];
+end
+
+%% AVG eye position error
+AVGmatRelPos = nan(n_speeds,length(exptDat.ex.conds)/2,2, length(names)); %
+
+for i =1:length(names)
+    for c = 1:length(exptDat.ex.conds)/2 %condition number
+        for s =1:length(speeds)
+            AVGmatRelPos(s,c,:,i) = squeeze(mean(sqrt(sum(combtrRelPos(:,:,s,c,:,i),2,'omitnan'))./sum(~isnan(combtrRelPos(:,:,s,c,:,i)),2,'omitnan'), 'omitnan'));
+        end 
     end
 end
 
 
-
 %% Plot
 
-conditions = {'Dim Phantom On','Dim Phantom Between','Light Phantom On','Light Phantom Between', 'Phantom Control Dark Line', 'Phantom Control Light Line'}; 
-
+conditions = {'Low Frequency Involuntary','High Frequency Involuntary','Low Frequency Voluntary','High Frequency Voluntary', 'Visually Guided'}; 
+eye = {'Left', 'Right'};
 yvar = AVGmatRelPos;
 ylab = {'Horizontal eye position error relative to target (deg)'};
-singleBarPlotSEM(yvar,conditions, ylab, [0 0.25])
- 
-% singleBarLinePlotSEM(yvar,conditions, ylab, [0 0.80])
-plotdir = strcat('/Users/loicdaumail/Documents/Research_MacBook/Tong_Lab/Projects/smooth_pursuit/anal_plots/stripe_vs_between_stripes/');
-mkdir(plotdir);
-saveas(gcf,strcat(plotdir, sprintf('pearson_time_lag_horizontal_error_bar_plot_on_between.svg')));
+ylims = [0 20];
+EPEBarPlotSTD(yvar,conditions, ylab, ylims, eye, speeds)
+
+plotDir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
+saveas(gcf,strcat(plotdir, sprintf('position_error_horizontal.jpg')));
 
 
 
