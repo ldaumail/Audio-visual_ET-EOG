@@ -1,6 +1,6 @@
 function auditory_visualsync_LD_v4(studyName, subject, session, debug)
 %Edited by Loic Daumail on 5/6/2025
-% subject = 'sub-00',
+% subject = 'sub-00';
 % session = 1;
 % debug = 1; 
 % studyName = 'ADA';
@@ -58,14 +58,16 @@ InitializePsychSound(1);
 
 % --- EXPERIMENT DESIGN ---
 
-ex.conds = {'LowLeftwardVol','LowRightwardVol',...
-            'HighLeftwardVol','HighRightwardVol',...
-            'LowLeftwardInvol','LowRightwardInvol',...
+ex.conds = {'LowLeftwardInvol','LowRightwardInvol',...
             'HighLeftwardInvol','HighRightwardInvol',...
+            'LowLeftwardVol','LowRightwardVol',...
+            'HighLeftwardVol','HighRightwardVol',...
             'VisLeftward', 'VisRightward',...
             }; %Low = low pitch tone, high = High pitch tone
 ex.numConds = length(ex.conds);
-ex.repsPerRun = 3;
+ex.driftingSpeeds = 5:20; %drifting speeds from 5 to 20 deg/s 
+ex.repsPerSpeed = 5;
+ex.repsPerRun = length(ex.driftingSpeeds)*ex.repsPerSpeed;
 ex.condShuffle = [];
 for i =1:ex.repsPerRun 
     ex.condShuffle = [ex.condShuffle, Shuffle([1:4])];
@@ -76,35 +78,47 @@ end
 for i =1:ex.repsPerRun 
     ex.condShuffle = [ex.condShuffle, Shuffle([9:10])];
 end
+conditions = struct();
 for i =1:ex.numConds
     conditions(i).name = ex.conds(i);
     conditions(i).startTimes = [];
 end
 
+ex.longSpeedShuffle = nan(length(ex.condShuffle),1);
+for i =1:ex.numConds
+    ex.speedShuffle = [];
+    for s =1:ex.repsPerSpeed
+        ex.speedShuffle = [ex.speedShuffle, Shuffle(ex.driftingSpeeds)];
+    end
+    ex.longSpeedShuffle(ex.condShuffle == i) = ex.speedShuffle;
+end
+ 
 %--- Timing ----
 ex.dot_displacement_deg = 20; % degrees from center (± 20 is 40 total)
-ex.driftingSpeeds = randi([5,20], length(ex.condShuffle),1); %take random drifting speeds between 5 and 20 deg/s 
-ex.trialdur = ex.dot_displacement_deg*2./ex.driftingSpeeds;
+
+ex.trialdur = ex.dot_displacement_deg*2./ex.longSpeedShuffle;
+ex.initialFixDur = 1; %in seconds
 
 % ---- STIMULI ---
 ex.nrchannels = 2;
-ex.Fs = 44100;
+% ex.Fs = 44100; %sampling frequency
+ex.Fs = 22050;
 ex.pahandle = PsychPortAudio('Open', [], 1, 1, ex.Fs, ex.nrchannels);
 
 % Setup MakeAuditoryNoise
 ex.p.Fs = ex.Fs; % since Fs is already made
-ex.p.filterWidth = 100; % Width of the filter -> need to adjust most likely
+ex.p.filterWidth = 100; % Width of the filter 
 ex.p.noiseType = 'Notch'; 
 ex.lowCutofflow = 1000;
 ex.highCutofflow = 2000;
 ex.lowCutoffhigh = 8000;
 ex.highCutoffhigh = 9000;
 
-ex.lowTone = nan(round(ex.Fs*ex.dot_displacement_deg*2/5),length(ex.driftingSpeeds)); %5 being the lowest possible speed, so longest possible trial duration
-ex.highTone = nan(round(ex.Fs*ex.dot_displacement_deg*2/5),length(ex.driftingSpeeds));
+ex.lowTone = nan(round(ex.Fs*(ex.initialFixDur+ex.dot_displacement_deg*2/5)),length(ex.longSpeedShuffle)); %5 being the lowest possible speed, so longest possible trial duration
+ex.highTone = nan(round(ex.Fs*(ex.initialFixDur+ex.dot_displacement_deg*2/5)),length(ex.longSpeedShuffle));
 
-for i =1:length(ex.driftingSpeeds)
-    ex.p.noiseDur = ex.trialdur(i); % Duration of noise in seconds -> might have to adjust down to 0.5
+for i =1:length(ex.longSpeedShuffle)
+    ex.p.noiseDur = ex.initialFixDur+ex.trialdur(i); % Duration of noise in seconds (add 1 s of initial fixation)
     ex.p.lowCutoff = ex.lowCutofflow;
     ex.p.highCutoff = ex.highCutofflow;
     ex.lowTone(1:length(MakeAuditoryNoise(ex.p)),i) = MakeAuditoryNoise(ex.p);
@@ -114,7 +128,7 @@ for i =1:length(ex.driftingSpeeds)
 end
 
 %---- Set up auditory motion trajectory ---%
-ex.trj.rightStartxy = [-1*ex.screenWidth/200, 0]; % -1 to 1 is left to right, units must be in meters
+ex.trj.rightStartxy = [-1*ex.screenWidth/200, 0]; % -1 to 1 is left to right, units must be in meters (divide by 100, then by 2 to have half the screen width)
 ex.trj.rightEndxy = [1*ex.screenWidth/200, 0];
 ex.trj.leftStartxy = [1*ex.screenWidth/200, 0]; % 1 to -1 is right to left
 ex.trj.leftEndxy = [-1*ex.screenWidth/200, 0];
@@ -122,22 +136,25 @@ ex.trj.orbital = 0;
 ex.trj.Fs = ex.Fs;
 
 % MakeTrajectory
-rightx = nan(round(ex.Fs*ex.dot_displacement_deg*2/5),length(ex.driftingSpeeds)); %5 being the lowest possible speed, so longest possible trial duration
-righty = nan(round(ex.Fs*ex.dot_displacement_deg*2/5),length(ex.driftingSpeeds)); %5 being the lowest possible speed, so longest possible trial duration
-leftx = nan(round(ex.Fs*ex.dot_displacement_deg*2/5),length(ex.driftingSpeeds)); %5 being the lowest possible speed, so longest possible trial duration
-lefty = nan(round(ex.Fs*ex.dot_displacement_deg*2/5),length(ex.driftingSpeeds)); %5 being the lowest possible speed, so longest possible trial duration
+rightx = nan(round(ex.Fs*(ex.initialFixDur+ex.dot_displacement_deg*2/5)),length(ex.longSpeedShuffle)); %5 being the lowest possible speed, so longest possible trial duration
+righty = nan(round(ex.Fs*(ex.initialFixDur+ex.dot_displacement_deg*2/5)),length(ex.longSpeedShuffle)); %5 being the lowest possible speed, so longest possible trial duration
+leftx = nan(round(ex.Fs*(ex.initialFixDur+ex.dot_displacement_deg*2/5)),length(ex.longSpeedShuffle)); %5 being the lowest possible speed, so longest possible trial duration
+lefty = nan(round(ex.Fs*(ex.initialFixDur+ex.dot_displacement_deg*2/5)),length(ex.longSpeedShuffle)); %5 being the lowest possible speed, so longest possible trial duration
 
-for i =1:length(ex.driftingSpeeds)
+for i =1:length(ex.longSpeedShuffle)
     ex.trj.noiseDur = ex.trialdur(i);
     %Rightward
     ex.trj.startxy = ex.trj.rightStartxy; % -1 to 1 is left to right
     ex.trj.endxy = ex.trj.rightEndxy;
-    [rightx(1:length(MakeTrajectory(ex.trj)),i), righty(1:length(MakeTrajectory(ex.trj)),i)] = MakeTrajectory(ex.trj);
-
+    [rightx(ex.Fs*ex.initialFixDur+1:ex.Fs*ex.initialFixDur+length(MakeTrajectory(ex.trj)),i), righty(ex.Fs*ex.initialFixDur+1:ex.Fs*ex.initialFixDur+length(MakeTrajectory(ex.trj)),i)] = MakeTrajectory(ex.trj);
+    rightx(1:ex.Fs*ex.initialFixDur) = rightx(ex.Fs*ex.initialFixDur+1);
+    righty(1:ex.Fs*ex.initialFixDur) = righty(ex.Fs*ex.initialFixDur+1);
     %Leftward
     ex.trj.startxy = ex.trj.leftStartxy; % 1 to -1 is right to left
     ex.trj.endxy = ex.trj.leftEndxy;
-    [leftx(1:length(MakeTrajectory(ex.trj)),i),lefty(1:length(MakeTrajectory(ex.trj)),i)] = MakeTrajectory(ex.trj);
+    [leftx(ex.Fs*ex.initialFixDur+1:ex.Fs*ex.initialFixDur+length(MakeTrajectory(ex.trj)),i),lefty(ex.Fs*ex.initialFixDur+1:ex.Fs*ex.initialFixDur+length(MakeTrajectory(ex.trj)),i)] = MakeTrajectory(ex.trj);
+    leftx(1:ex.Fs*ex.initialFixDur) = leftx(ex.Fs*ex.initialFixDur+1);
+    lefty(1:ex.Fs*ex.initialFixDur) = lefty(ex.Fs*ex.initialFixDur+1);
 end
 
 
@@ -152,9 +169,9 @@ ex.p.orbital = ex.trj.orbital;
 
 %preallocate sound stimuli with a zeros matrix to avoit warning from
 %interpolator:
-ex.finalaudiostimulus = nan(ex.Fs*ex.dot_displacement_deg*2/5, ex.nrchannels, length(ex.driftingSpeeds), 4); %5 being the lowest possible speed, so longest possible trial duration
+ex.finalaudiostimulus = nan(ex.Fs*ex.dot_displacement_deg*2/5, ex.nrchannels, length(ex.longSpeedShuffle), 4); %5 being the lowest possible speed, so longest possible trial duration
 ex.p.RiseFallDur = 0.2;    % rise and fall time (sec)
-for i =1:length(ex.driftingSpeeds)
+for i =1:length(ex.longSpeedShuffle)
     ex.finalaudiostimulus(1:length(rightx(~isnan(rightx(:,i)),i)),:,i,1) = RiseFall(ex.p, auditoryCueIntegrator(ex.p, ex.lowTone(~isnan(rightx(:,i)),i), rightx(~isnan(rightx(:,i)),i), righty(~isnan(righty(:,i)),i)));
     ex.finalaudiostimulus(1:length(rightx(~isnan(rightx(:,i)),i)),:,i,2) = RiseFall(ex.p, auditoryCueIntegrator(ex.p, ex.highTone(~isnan(rightx(:,i)),i), rightx(~isnan(rightx(:,i)),i), righty(~isnan(righty(:,i)),i)));
     ex.finalaudiostimulus(1:length(leftx(~isnan(leftx(:,i)),i)),:,i,3) = RiseFall(ex.p, auditoryCueIntegrator(ex.p, ex.lowTone(~isnan(leftx(:,i)),i), leftx(~isnan(leftx(:,i)),i), lefty(~isnan(lefty(:,i)),i)));
@@ -170,8 +187,8 @@ HideCursor;
 Priority(1); %Set PC to allocate max CPU and interrupt things that run in
 %background if timing is critical
 if debug
-    %[window, windowRect]=Screen('OpenWindow',0, [128 128 128],[100 100 600 400],[],[],[],[],kPsychNeed32BPCFloat);
-    [window, windowRect]=Screen('OpenWindow',screenNumber,ex.backgroundColor,[],[],[],[],[],kPsychNeed32BPCFloat);
+    [window, windowRect]=Screen('OpenWindow',0, [128 128 128],[100 100 600 400],[],[],[],[],kPsychNeed32BPCFloat);
+    %[window, windowRect]=Screen('OpenWindow',screenNumber,ex.backgroundColor,[],[],[],[],[],kPsychNeed32BPCFloat);
 
 else
     [window, windowRect]=Screen('OpenWindow',screenNumber,ex.backgroundColor,[],[],[],[],[],kPsychNeed32BPCFloat);
@@ -194,26 +211,26 @@ ex.dotRadius = ex.dotRadius_deg*ex.ppd;
 % Target dot drift positions
 ex.flipsPerSec = 60;  % 60;         % number of phase changes we want from the visual stimulus, and thus the number of times we want to change visual stimulation on the screen
 ex.flipWin = 1/ex.flipsPerSec;         % in seconds then actually in 1 sec the stimuli will change 12 times
-ex.trialFlips = nan(ex.flipsPerSec*(ex.dot_displacement_deg*2/5+1), length(ex.trialdur)); %5 being the lowest possible speed, so longest possible trial duration add 1 s for fixation time
-for i =1:length(ex.driftingSpeeds)
-    ex.trialFlips(1:length((0:ex.flipWin:1+ex.trialdur(i))),i) = (0:ex.flipWin:1+ex.trialdur(i));
+ex.trialFlips = nan(ex.flipsPerSec*(ex.initialFixDur + ex.dot_displacement_deg*2/5), length(ex.trialdur)); %5 being the lowest possible speed, so longest possible trial duration add 1 s for fixation time
+for i =1:length(ex.longSpeedShuffle)
+    ex.trialFlips(1:length((0:ex.flipWin:ex.initialFixDur+ex.trialdur(i))),i) = (0:ex.flipWin:1+ex.trialdur(i));
     % ex.trialFlips = ex.trialFlips(1:length((0:ex.flipWin:1+ex.trialdur(i)))-1,i);
 end
 
 frames = ex.flipsPerSec.*ex.trialdur; % frames
 ex.xval = nan(ex.flipsPerSec*(ex.dot_displacement_deg*2/5), length(ex.trialdur));
-for i =1:length(ex.driftingSpeeds)
+for i =1:length(ex.longSpeedShuffle)
     ex.xval(1:length(linspace(-1, 1, frames(i))),i) = linspace(-1, 1, frames(i)); %Normalized dot location change vector
     ex.xval(length(linspace(-1, 1, frames(i)))+1:end,i) = NaN;
 end
 ex.leftPos = screenXpixels / 2 - ex.dot_displacement; % displacement comes from visual angle conversion
 ex.rightPos = screenXpixels / 2 + ex.dot_displacement;
-ex.fixDur = 1;
+
 
 ex.dotxPos = nan(ex.flipsPerSec*(ex.dot_displacement_deg*2/5+1),length(ex.trialdur), 2);
 for i =1:length(ex.trialdur)
-    ex.dotxPos(:,i,1) = [repmat(ex.leftPos + (ex.rightPos - ex.leftPos) * (ex.xval(1,i) + 1) / 2, ex.fixDur*ex.flipsPerSec,1); ex.leftPos + (ex.rightPos - ex.leftPos) * (ex.xval(:,i) + 1) / 2]; % still dot+ Rightward drift
-    ex.dotxPos(:,i,2) = [repmat(ex.rightPos + (ex.leftPos - ex.rightPos) * (ex.xval(1,i) + 1) / 2, ex.fixDur*ex.flipsPerSec,1); ex.rightPos + (ex.leftPos - ex.rightPos) * (ex.xval(:,i) + 1) / 2]; % still dot+ Leftward drift
+    ex.dotxPos(:,i,1) = [repmat(ex.leftPos + (ex.rightPos - ex.leftPos) * (ex.xval(1,i) + 1) / 2, ex.initialFixDur*ex.flipsPerSec,1); ex.leftPos + (ex.rightPos - ex.leftPos) * (ex.xval(:,i) + 1) / 2]; % still dot+ Rightward drift
+    ex.dotxPos(:,i,2) = [repmat(ex.rightPos + (ex.leftPos - ex.rightPos) * (ex.xval(1,i) + 1) / 2, ex.initialFixDur*ex.flipsPerSec,1); ex.rightPos + (ex.leftPos - ex.rightPos) * (ex.xval(:,i) + 1) / 2]; % still dot+ Leftward drift
 end
 
 % --- EYELINK PARAMS ---
@@ -235,11 +252,11 @@ PsychPortAudio('Start', ex.pahandle, 1, 0, 1);
 % WaitSecs(2); % Allow some time to record a few samples before presenting first stimulus
 
 % --- INITIALIZE EXPT ---
-cnt = 0; %stim onset/ stim offset count
+% cnt = 0; %stim onset/ stim offset count
 t = 0;
 
 % --- INSTRUCTIONS ---
-DrawFormattedText(window,'Track the motion signal and indicate the motion direction with the following keys: \n\n Press "F" for leftward motion, and "J" for rightward motion. \n\n For some tone trials, you will be prompted to track the motion with your gaze. \n\n When not prompted, you can keep your gaze still unless a visual cue is shown on the screen. \n\n Press Space to start','center', 'center',[0 0 0]);
+DrawFormattedText(window,'Track the motion signal and indicate the motion direction with the following keys: \n\n Press "F" for leftward motion, and "J" for rightward motion. \n\n Press Space to start','center', 'center',[0 0 0]);
 Screen(window, 'Flip', 0);
 KbTriggerWait(KbName('Space'), deviceNumber);
 if t == 0
@@ -265,20 +282,28 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     thisCond = ex.condShuffle(t);
     condName = conditions(thisCond).name{:};
     if  contains(condName, 'Invol') && t == 1
-        DrawFormattedText(window,'Part 1'... % :  '...
+        DrawFormattedText(window,'Part 1 \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
-        WaitSecs(0.5);
+        KbWait(deviceNumber,2)
     elseif contains(condName, 'Vol') && t == ex.repsPerRun*4+1
-        DrawFormattedText(window,'Part 2: Track the moving tone direction with your gaze \n\n as accurately as you can'... % :  '...
+        savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
+        if ~exist(savedir); mkdir(savedir); end
+        savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_part1',subject,ex.version,num2str(ex.date)), '.mat'));
+        save(savename,'ex','-v7.3')
+        DrawFormattedText(window,'Part 2: Track the moving tone direction with your gaze \n\n as accurately as you can \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
-        WaitSecs(0.5);
+        KbWait(deviceNumber,2)
     elseif contains(condName, 'Vis') && t == ex.repsPerRun*8+1
-        DrawFormattedText(window,'Part 3: Track the moving dot direction with your gaze \n\n as accurately as you can'... % :  '...
+        savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
+        if ~exist(savedir); mkdir(savedir); end
+        savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_part2',subject,ex.version,num2str(ex.date)), '.mat'));
+        save(savename,'ex','-v7.3')
+        DrawFormattedText(window,'Part 3: Track the moving dot direction with your gaze \n\n as accurately as you can \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
-        WaitSecs(0.5);
+        KbWait(deviceNumber,2)
     end
     KbQueueStart();
     % Generate audio_stim
@@ -291,21 +316,20 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     elseif contains(condName, 'High') && contains(condName, 'Leftward') % lets do female tone
        finalstimulus = ex.finalaudiostimulus(:,:,t,4); % definitely more than the average for the female tone but ensures significant difference
     end
-
-    cnt = cnt+1;
     
-
-    % attempting to match dot direction to trial direction, so audio as
-    % well?
     if contains(condName, 'Rightward') && contains(condName, 'Vis') %ex.sorted_rep_emat(trial_number, 3) == 1 % Left to Right
         dotXpos = ex.dotxPos(:,t,1);
     elseif contains(condName, 'Leftward') && contains(condName, 'Vis')% Right to Left
         dotXpos = ex.dotxPos(:,t,2);
+    elseif contains(condName, 'RightwardVol') % Right to Left
+        dotXpos = ex.dotxPos(1:ex.flipsPerSec*ex.initialFixDur,t,1);
+    elseif contains(condName, 'LeftwardVol') % Right to Left
+        dotXpos = ex.dotxPos(1:ex.flipsPerSec*ex.initialFixDur,t,2);
     end
 
-    for i = 1:length(ex.dotxPos(~isnan(ex.dotxPos(:,t,1)),t,1))-1 % Only run the flips of each trial
+    for i = 1:length(ex.dotxPos(~isnan(ex.dotxPos(:,t,1)),t,1)) % Only run the flips of each trial 
         %Play sound
-        if (contains(condName, 'Low') || contains(condName, 'High')) && i == ex.fixDur*ex.flipsPerSec+1
+        if (contains(condName, 'Low') || contains(condName, 'High')) && i == 1 %ex.initialFixDur*ex.flipsPerSec+1
             % Play the audio
             PsychPortAudio('FillBuffer', ex.pahandle, finalstimulus');
             PsychPortAudio('Start', ex.pahandle, 1, 0, 1);
@@ -316,6 +340,11 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
             dotYpos = screenYpixels / 2;
             % Render dot
             Screen('FillOval', window, ex.dotColor(t), [dotXpos(i) - ex.dotRadius, dotYpos - ex.dotRadius, dotXpos(i) + ex.dotRadius, dotYpos + ex.dotRadius]);
+        elseif contains(condName, 'Vol') && i <= ex.flipsPerSec*ex.initialFixDur
+            dotYpos = screenYpixels / 2;
+            % Render dot
+            Screen('FillOval', window, ex.dotColor(t), [dotXpos(i) - ex.dotRadius, dotYpos - ex.dotRadius, dotXpos(i) + ex.dotRadius, dotYpos + ex.dotRadius]);
+
         end
         if i == 1
             [VBLT, startTrial, FlipT, missed] = Screen(window, 'Flip', 0);%[VBLTimestamp StimulusOnsetTime FlipTimestamp Missed] = Screen('Flip', windowPtr [, when] [, dontclear]...
@@ -329,7 +358,7 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
         else
             [VBLT,flipTime, FlipT, missed] = Screen(window, 'Flip',startTrial + ex.trialFlips(i) - slack); %,   %%% ex.flipTime(n,c)
             flipTimes = [flipTimes, flipTime];
-            if ET == 1 && i == (ex.trialdur(t)+ex.fixDur)*ex.flipsPerSec+1
+            if ET == 1 && i == (ex.trialdur(t)+ex.initialFixDur)*ex.flipsPerSec %+1
                 Eyelink('Message', 'STIM_OFFSET');
 
             end
@@ -342,7 +371,7 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     end
     % Clear screen after each trial
     Screen('Flip', window);
-    cnt = cnt+1;
+    % cnt = cnt+1;
 
     key_input = '';
     % Check for key press
@@ -385,6 +414,7 @@ end
 ex.runTime = GetSecs - ex.startRun;
 
 %save data
+ex.finalaudiostimulus = [];
 savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
 if ~exist(savedir); mkdir(savedir); end
 savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_fix',subject,ex.version,num2str(ex.date)), '.mat'));

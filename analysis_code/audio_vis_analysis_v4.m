@@ -57,8 +57,6 @@ for i =1:length(names)
     
     clear speed s xpTr ypTr 
 
-    xpTr = nan((1+max(exptDat.ex.trialdur))*ELsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
-    ypTr = nan((1+max(exptDat.ex.trialdur))*ELsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
     origX = nan((1+max(exptDat.ex.trialdur))*ELsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
     origY = nan((1+max(exptDat.ex.trialdur))*ELsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
     blinkTrs = nan((1+max(exptDat.ex.trialdur))*ELsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
@@ -68,8 +66,7 @@ for i =1:length(names)
 
     onsetT = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'STIM_ONSET'));%
     %offsetT = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'STIM_OFFSET'));%
-    TTL_pulse_on(i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_On'));
-    TTL_pulse_off(i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_Off'));
+
     edfConds = edfDat.Events.Messages.info(contains(edfDat.Events.Messages.info, conds));
     for c =1:length(conds)
         clear onsetTcond offsetTcond
@@ -289,25 +286,42 @@ saveas(gcf,strcat(plotDir, sprintf('position_error_horizontal.jpg')));
 
 %% Load .acq data from BIOPAC
 ELsamplerate = 1000;
-ACKsamplerate = 2000;
+ACQsamplerate = 2000;
 for i =1:length(names)
 
     acq_data = load(strcat(folderDir, sprintf('%s_audio_visual_motion_v%s_date20250609_run1.mat', name, version)));
+
+    EL_TTL_pulse_on(i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_On'));
+    EL_TTL_pulse_off(i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_Off'));
 
     TTL_pulse = find(diff(acq_data.data(:,9)).^2 > 0)+1;
     acq_TTL_pulse_on(i) = TTL_pulse(1);
     acq_TTL_pulse_off(i) = TTL_pulse(2);
 
-    eyeLink_acq_on_diff = TTL_pulse_on(i)*ACKsamplerate/ELsamplerate - acq_TTL_pulse_on(i); % 
-    eyeLink_acq_off_diff = TTL_pulse_off(i)*ACKsamplerate/ELsamplerate - acq_TTL_pulse_off(i);
+    eyeLink_acq_on_diff = EL_TTL_pulse_on(i)*ACQsamplerate/ELsamplerate - acq_TTL_pulse_on(i); % 
+    eyeLink_acq_off_diff = EL_TTL_pulse_off(i)*ACQsamplerate/ELsamplerate - acq_TTL_pulse_off(i);
 
+    blinksIdxL = find(blinksL).*2 + edfDat.Samples.time(1)*2 - eyeLink_acq_on_diff;
+    blinksIdxR = find(blinksR).*2 + edfDat.Samples.time(1)*2 - eyeLink_acq_on_diff;
+
+
+    blinksMat = nan(length(acq_data.data),2);
+    blinksMat(blinksIdxL,1) = 1;
+    blinksMat(~blinksIdxL,1) = 0;
+    blinksMat(blinksIdxR,2) = 1;
+    blinksMat(~blinksIdxR,2) = 0;
+
+    origX = nan((1+max(exptDat.ex.trialdur))*ACQsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
+    origY = nan((1+max(exptDat.ex.trialdur))*ACQsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
+    blinkTrs = nan((1+max(exptDat.ex.trialdur))*ACQsamplerate,exptDat.ex.repsPerRun, length(exptDat.ex.conds),2);
+
+    onsetT = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'STIM_ONSET')).*2  - eyeLink_acq_on_diff;%
      for c =1:length(conds)
         clear onsetTcond offsetTcond
         %experimental conditions
-        acqCondT = edfDat.Events.Messages.time(contains(edfDat.Events.Messages.info, conds(c)))- eyeLink_acq_on_diff; %times of onset of specific condition
+        acqCondT = edfDat.Events.Messages.time(contains(edfDat.Events.Messages.info, conds(c))).*2 - eyeLink_acq_on_diff; %times of onset of specific condition
         driftingSpeedsCond = exptDat.ex.driftingSpeeds(contains(edfConds, conds(c))); %all drifting speeds of all trials for a given condition (speed varies across trials)
         trialDurations = exptDat.ex.trialdur(contains(edfConds, conds(c)));% durations of trials for specific condition
-        % xtraj = exptDat.ex.xval(:,contains(edfConds, conds(c))); %all trajectories of all trials for a given condition (speed varies across trials)
 
         onsetTcond = [];
         offsetTcond = [];
@@ -317,12 +331,21 @@ for i =1:length(names)
         end
 
         for n = 1:length(onsetTcond)
-            xtrL = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n))+ELsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),1); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
-            xtrR = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n))+ELsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),4); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
+            xtrL = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n))+ACQsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),1); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
+            xtrR = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n))+ACQsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),4); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
 
-            ytrL = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n))+ELsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),2); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
-            ytrR = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(n))+ELsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),5); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
+            ytrL = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n))+ACQsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),2); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
+            ytrR = acq_data.data(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n))+ACQsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),5); %find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(n))
 
+            blinktrL = blinksMat(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n))+ACQsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),1);
+            blinktrR = blinksMat(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n)):round(find(edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff == onsetTcond(n))+ACQsamplerate*(2*exptDat.ex.dot_displacement_deg)/driftingSpeedsCond(n)),2);
+  
+
+            xtrL(blinktrL == 1) = NaN;
+            xtrR(blinktrR == 1) = NaN;
+
+            ytrL(blinktrL == 1) = NaN;
+            ytrR(blinktrR == 1) = NaN;
 
             origX(1:length(xtrL),n,c,1) = xtrL;
             origX(1:length(xtrR),n,c,2) = xtrR;
@@ -330,23 +353,25 @@ for i =1:length(names)
             origY(1:length(ytrL),n,c,1) = ytrL;
             origY(1:length(ytrR),n,c,2) = ytrR;
 
+            blinkTrs(1:length(blinktrR),n,c,1) = blinktrR;
+            blinkTrs(1:length(blinktrL),n,c,2) = blinktrL;
 
-            % %trial plot
+            % % %trial plot
             figure('Position',[100 100 1200 600]); %
-            time = [repmat(0,1,samplerate), 1:1/samplerate:trialDurations(n)+1];
-            plot(time(1:end-1),origX(1:length(time(1:end-1)),n,c),'LineWidth', 2,'col','r')
+            time = [repmat(0,1,ACQsamplerate), 1:1/ACQsamplerate:trialDurations(n)+1];
+            plot(time(1:end-1),origX(1:length(time(1:end-1)),n,c,2),'LineWidth', 2,'col','r')
             hold on
             %stim trajectory
-            xtraj = [repmat(20,1,samplerate), (-1)*(-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(n)/samplerate:exptDat.ex.dot_displacement_deg)];
+            xtraj = [repmat(20,1,ACQsamplerate), (-1)*(-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(n)/ACQsamplerate:exptDat.ex.dot_displacement_deg)];
             plot(time, xtraj ,'LineWidth', 2,'col','b')
             sgtitle(strcat(conds{c}),'fontweight','bold','Interpreter', 'none')
-            plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
-            saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%s_electrooculogram_deg_%s.jpg',name,conds{c},n,version)));
+            % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
+            % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%s_electrooculogram_deg_%s.jpg',name,conds{c},n,version)));
 
 
         end
-        % %plot x/y data
-        % xax = (1:size(origX,1))./1000;
+        %plot x/y data
+        % xax = (1:size(origX,1))./ACQsamplerate;
         % figure('Position',[100 100 1200 600]); %
         % subplot(2,1,1)
         % plot(xax,origX(:,:,c,1),'LineWidth', 1)
