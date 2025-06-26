@@ -58,14 +58,14 @@ InitializePsychSound(1);
 
 % --- EXPERIMENT DESIGN ---
 
-ex.conds = {'LowLeftwardVol','LowRightwardVol',...
-            'HighLeftwardVol','HighRightwardVol',...
-            'LowLeftwardInvol','LowRightwardInvol',...
+ex.conds = {'LowLeftwardInvol','LowRightwardInvol',...
             'HighLeftwardInvol','HighRightwardInvol',...
+            'LowLeftwardVol','LowRightwardVol',...
+            'HighLeftwardVol','HighRightwardVol',...
             'VisLeftward', 'VisRightward',...
             }; %Low = low pitch tone, high = High pitch tone
 ex.numConds = length(ex.conds);
-ex.repsPerRun = 3;
+ex.repsPerRun = 60;
 ex.condShuffle = [];
 for i =1:ex.repsPerRun 
     ex.condShuffle = [ex.condShuffle, Shuffle([1:4])];
@@ -239,7 +239,7 @@ cnt = 0; %stim onset/ stim offset count
 t = 0;
 
 % --- INSTRUCTIONS ---
-DrawFormattedText(window,'Track the motion signal and indicate the motion direction with the following keys: \n\n Press "F" for leftward motion, and "J" for rightward motion. \n\n For some tone trials, you will be prompted to track the motion with your gaze. \n\n When not prompted, you can keep your gaze still unless a visual cue is shown on the screen. \n\n Press Space to start','center', 'center',[0 0 0]);
+DrawFormattedText(window,'Track the motion signal and indicate the motion direction with the following keys: \n\n Press "F" for leftward motion, and "J" for rightward motion. \n\n Press Space to start','center', 'center',[0 0 0]);
 Screen(window, 'Flip', 0);
 KbTriggerWait(KbName('Space'), deviceNumber);
 if t == 0
@@ -265,20 +265,28 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     thisCond = ex.condShuffle(t);
     condName = conditions(thisCond).name{:};
     if  contains(condName, 'Invol') && t == 1
-        DrawFormattedText(window,'Part 1'... % :  '...
+        DrawFormattedText(window,'Part 1 \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
-        WaitSecs(0.5);
+        KbWait(deviceNumber,2)
     elseif contains(condName, 'Vol') && t == ex.repsPerRun*4+1
-        DrawFormattedText(window,'Part 2: Track the moving tone direction with your gaze \n\n as accurately as you can'... % :  '...
+        savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
+        if ~exist(savedir); mkdir(savedir); end
+        savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_part1',subject,ex.version,num2str(ex.date)), '.mat'));
+        save(savename,'ex','-v7.3')
+        DrawFormattedText(window,'Part 2: Track the moving tone direction with your gaze \n\n as accurately as you can \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
-        WaitSecs(0.5);
+        KbWait(deviceNumber,2)
     elseif contains(condName, 'Vis') && t == ex.repsPerRun*8+1
-        DrawFormattedText(window,'Part 3: Track the moving dot direction with your gaze \n\n as accurately as you can'... % :  '...
+        savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
+        if ~exist(savedir); mkdir(savedir); end
+        savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_part2',subject,ex.version,num2str(ex.date)), '.mat'));
+        save(savename,'ex','-v7.3')
+        DrawFormattedText(window,'Part 3: Track the moving dot direction with your gaze \n\n as accurately as you can \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
-        WaitSecs(0.5);
+        KbWait(deviceNumber,2)
     end
     KbQueueStart();
     % Generate audio_stim
@@ -385,6 +393,7 @@ end
 ex.runTime = GetSecs - ex.startRun;
 
 %save data
+ex.finalaudiostimulus = [];
 savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
 if ~exist(savedir); mkdir(savedir); end
 savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_fix',subject,ex.version,num2str(ex.date)), '.mat'));
