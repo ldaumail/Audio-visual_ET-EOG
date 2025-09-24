@@ -12,16 +12,16 @@ for i =1:length(names)
     folderDir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/data/',...
         sprintf('v%s_test/%s_v%s',version, name,version), '/');
     %%% Biopac Data
-    acq_data = load(strcat(folderDir, sprintf('%s_audio_visual_motion_v%s_date20250627T152558_run1.mat', name, version)));
+    acq_data = load(strcat(folderDir, sprintf('%s_audio_visual_motion_v%s_date20250627T153057_run2.mat', name, version)));
 
     %%% Eyelink Data
 
     fileNames = dir(folderDir);
-    fileNames = string({fileNames(contains({fileNames.name},'TES1_01')| contains({fileNames.name},'.mat')).name});
+    fileNames = string({fileNames(contains({fileNames.name},'TES1_02')| contains({fileNames.name},'.mat')).name});
 
     edfName = char(strcat(folderDir,fileNames(contains(fileNames,'.edf'))));
     edfDat = Edf2Mat(edfName);
-    exptName = strcat(folderDir,fileNames(contains(fileNames,'152558_fix.mat')));
+    exptName = strcat(folderDir,fileNames(contains(fileNames,'153057_fix.mat')));
     exptDat = load(exptName);
     xbsl = exptDat.ex.screenParams.width/2;
     ybsl = exptDat.ex.screenParams.height/2;
@@ -46,8 +46,9 @@ for i =1:length(names)
 
     onsetT = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'STIM_ONSET'));%
     offsetT = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'STIM_OFFSET'));%
-    edfConds = edfDat.Events.Messages.info(contains(edfDat.Events.Messages.info, conds));
     conds = exptDat.ex.conds;
+    edfConds = edfDat.Events.Messages.info(contains(edfDat.Events.Messages.info, conds));
+    
     for c =1:length(conds)
         clear onsetTcond offsetTcond
         edfCondT = edfDat.Events.Messages.time(contains(edfDat.Events.Messages.info, conds(c))); %times of onset of specific condition
@@ -121,12 +122,12 @@ for i =1:length(names)
     % Eyelink Channels
     xLeft_acq = acq_data.data(:,1);
     
-    normXLeft_acq = (xLeft_acq - min(xLeft_acq))./(max(xLeft_acq)-min(xLeft_acq));
+    % normXLeft_acq = (xLeft_acq - min(xLeft_acq))./(max(xLeft_acq)-min(xLeft_acq));
+    % 
+    % normXLeft_eyelink = (xL - min(xL))./(max(xL)-min(xL));
 
-    normXLeft_eyelink = (xL - min(xL))./(max(xL)-min(xL));
-
-    pearsonR = nan(length(normXLeft_acq)-(find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(1),1,'first')-find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(1),1,'first')),1);
-    for n = 1:length(normXLeft_acq)-(find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(1),1,'first')-find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(1),1,'first'))
+    pearsonR = nan(length(xLeft_acq)-(find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(1),1,'first')-find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(1),1,'first')),1);
+    for n = 1:length(xLeft_acq)-(find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(1),1,'first')-find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(1),1,'first'))
             r = corrcoef(xLeft_acq(n:n+(find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(1),1,'first')-find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(1),1,'first'))),xL(find(edfDat.RawEdf.FSAMPLE.time == onsetTcond(1),1,'first'):find(edfDat.RawEdf.FSAMPLE.time == offsetTcond(1),1,'first')));
             pearsonR(n,1) = r(2,1);
     end
@@ -160,7 +161,7 @@ for i =1:length(names)
     subplot(3,1,3)
     time = 0:1/ACQsamplerate:(length(pearsonR)-1)/ACQsamplerate;
     plot(time, pearsonR)
-    xlim([0 140])
+    xlim([0 80])
     xlabel('Time (sec)')
     ylabel('Correlation')
     title('Pearson correlation coefficient over time')
@@ -184,7 +185,7 @@ for i =1:length(names)
     figure('Position',[100 100 1200 600])
     subplot(1,1,1)
     plot((0:1/ACQsamplerate:(length(acq_data.data(:,1))-1)/ACQsamplerate)*1000,acq_data.data(:,1))
-    xlim([94500 94700])
+    xlim([60500 60700])
     xline(1000*acq_TTL_pulse_on./ACQsamplerate, color = 'r', LineWidth= 2)
     hold on
 
@@ -204,7 +205,7 @@ for i =1:length(names)
     % Trial end
     figure('Position',[100 100 1200 600])
     plot((0:1/ACQsamplerate:(length(acq_data.data(:,1))-1)/ACQsamplerate)*1000,acq_data.data(:,1))
-    xlim([103000 109000])
+    xlim([69000 72000])
     xline(1000*acq_TTL_pulse_off./ACQsamplerate, color = 'r', LineWidth= 2)
     hold on
     xline(1000*(eyelink_TTL_pulse_off-eyeLink_acq_on_diff)./ACQsamplerate, color = 'k', LineWidth= 2)
