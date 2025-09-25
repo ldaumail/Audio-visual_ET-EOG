@@ -1,6 +1,6 @@
 function auditory_visualsync_LD_v5(studyName, subject, session, debug)
 %Edited by Loic Daumail on 5/6/2025
-% subject = 'sub-0x';
+% subject = 'sub-100';
 % session = 1;
 % debug = 0; 
 % studyName = 'ADA';
@@ -995,12 +995,12 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     end
 
     for i = 1:length(ex.dotxPos(~isnan(ex.dotxPos(:,t,1)),t,1)) % Only run the flips of each trial 
-        %Play sound
-        if (contains(condName, 'Low') || contains(condName, 'High')) && i == 1 %ex.initialFixDur*ex.flipsPerSec+1
-            % Play the audio
-            PsychPortAudio('FillBuffer', ex.pahandle, finalstimulus');
-            PsychPortAudio('Start', ex.pahandle, 1, 0, 1);
-        end
+        % % Play sound
+        % if (contains(condName, 'Low') || contains(condName, 'High')) && i == 1 %ex.initialFixDur*ex.flipsPerSec+1
+        %     Play the audio
+        %     PsychPortAudio('FillBuffer', ex.pahandle, finalstimulus');
+        %     PsychPortAudio('Start', ex.pahandle, 1, 0, 1);
+        % end
         % Calculate dot position in pixels based on audio trajectory (but
         % manually.. might have to change lin space if we adjust audio x, y
         if contains(condName, 'Vis')
@@ -1032,10 +1032,10 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
 
         end
     end
-    if contains(condName, 'Low') || contains(condName, 'High')
-        % Stop Audio
-        PsychPortAudio('Stop', ex.pahandle);
-    end
+    % if contains(condName, 'Low') || contains(condName, 'High')
+    %     % Stop Audio
+    %     PsychPortAudio('Stop', ex.pahandle);
+    % end
     % Clear screen after each trial
     Screen('Flip', window);
     % cnt = cnt+1;
