@@ -1,7 +1,7 @@
 function auditory_visualsync_LD_v5(studyName, subject, session, debug)
 %Edited by Loic Daumail on 5/6/2025
-% subject = 'sub-100';
-% session = 1;
+% subject = 'sub-50';
+% session = '01';
 % debug = 0; 
 % studyName = 'ADA';
 
@@ -64,8 +64,10 @@ ex.conds = {'LowLeftwardInvol','LowRightwardInvol',...
             'HighLeftwardInvol','HighRightwardInvol',...
              }; %Low = low pitch tone, high = High pitch tone
 ex.numConds = length(ex.conds);
-ex.driftingSpeeds = 20; %5:20; %drifting speeds from 5 to 20 deg/s 
-ex.repsPerSpeed = 1; %5;
+driftSpeeds = 5:20;
+repsPerSpeed = 5;
+ex.driftingSpeeds = driftSpeeds; %drifting speeds from 5 to 20 deg/s 
+ex.repsPerSpeed = repsPerSpeed;
 ex.repsPerRun = length(ex.driftingSpeeds)*ex.repsPerSpeed;
 ex.condShuffle = [];
 for i =1:ex.repsPerRun 
@@ -276,7 +278,7 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     thisCond = ex.condShuffle(t);
     condName = conditions(thisCond).name{:};
     if  contains(condName, 'Invol') && t == 1
-        DrawFormattedText(window,'Part 1 \n\n Place left and right hand finger on "F" and "J", \n\n respectively, and close your eyes. \n\n Press Space to start'... % :  '...
+        DrawFormattedText(window,'Part 1 \n\n Place left and right hand finger on "F" and "J", \n\n respectively, and close your eyes. \n\n Press "F" for leftward motion, and "J" for rightward motion. \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
         KbWait(deviceNumber,2)
@@ -421,8 +423,8 @@ InitializePsychSound(1);
 ex.conds = {'LowLeftwardVol','LowRightwardVol',...
             'HighLeftwardVol','HighRightwardVol'}; %Low = low pitch tone, high = High pitch tone
 ex.numConds = length(ex.conds);
-ex.driftingSpeeds = 20; %5:20; %drifting speeds from 5 to 20 deg/s 
-ex.repsPerSpeed = 1; %5;
+ex.driftingSpeeds = driftSpeeds; %drifting speeds from 5 to 20 deg/s 
+ex.repsPerSpeed = repsPerSpeed;
 ex.repsPerRun = length(ex.driftingSpeeds)*ex.repsPerSpeed;
 ex.condShuffle = [];
 for i =1:ex.repsPerRun 
@@ -597,8 +599,8 @@ end
 %     Eyelink('StartRecording'); % Start tracker recording
 % end
 %Sham audio stimulus to avoid delay on first trial for sound activation
-PsychPortAudio('FillBuffer', ex.pahandle, ex.finalaudiostimulus(:,:,1)');
-PsychPortAudio('Start', ex.pahandle, 1, 0, 1);
+% PsychPortAudio('FillBuffer', ex.pahandle, ex.finalaudiostimulus(:,:,1)');
+% PsychPortAudio('Start', ex.pahandle, 1, 0, 1);
 % WaitSecs(2); % Allow some time to record a few samples before presenting first stimulus
 
 % --- INITIALIZE EXPT ---
@@ -632,7 +634,7 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     thisCond = ex.condShuffle(t);
     condName = conditions(thisCond).name{:};
     if contains(condName, 'Vol') && t == 1
-        DrawFormattedText(window,'Part 2: Track the moving tone direction with your gaze \n\n as accurately as you can \n\n and indicate the direction with F and J keys \n\n Press Space to start'... % :  '...
+        DrawFormattedText(window,'Part 2: Track the moving tone direction with your gaze \n\n as accurately as you can \n\n and indicate the direction with "F" and "J" keys \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
         KbWait(deviceNumber,2)
@@ -779,8 +781,8 @@ ex.date = datestr(now,30);
 
 ex.conds = {'VisLeftward', 'VisRightward'}; %Low = low pitch tone, high = High pitch tone
 ex.numConds = length(ex.conds);
-ex.driftingSpeeds = 20; %5:20; %drifting speeds from 5 to 20 deg/s 
-ex.repsPerSpeed = 1; %5;
+ex.driftingSpeeds = driftSpeeds; %drifting speeds from 5 to 20 deg/s 
+ex.repsPerSpeed = repsPerSpeed;
 ex.repsPerRun = length(ex.driftingSpeeds)*ex.repsPerSpeed;
 ex.condShuffle = [];
 for i =1:ex.repsPerRun 
@@ -970,7 +972,7 @@ KbQueueCreate(deviceNumber,responseKeys);
 for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     thisCond = ex.condShuffle(t);
     condName = conditions(thisCond).name{:};
-    if contains(condName, 'Vis') && t == ex.repsPerRun*8+1
+    if contains(condName, 'Vis') && t == 1
         DrawFormattedText(window,'Part 3: Track the moving dot direction with your gaze \n\n as accurately as you can \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
