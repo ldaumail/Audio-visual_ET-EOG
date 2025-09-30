@@ -282,7 +282,7 @@ for t = 1:length(ex.condShuffle) %size(ex.sorted_rep_emat, 1)
     thisCond = ex.condShuffle(t);
     condName = conditions(thisCond).name{:};
     if  contains(condName, 'Invol') && t == 1
-        DrawFormattedText(window,'Part 1 \n\n Press Space to start'... % :  '...
+        DrawFormattedText(window,'Part 1 \n\n Place left and right hand finger on "F" and "J", \n\n respectively, and close your eyes. \n\n Press Space to start'... % :  '...
             ,'center', 'center',[0 0 0]);
         Screen(window, 'Flip', 0);
         KbWait(deviceNumber,2)
@@ -417,7 +417,7 @@ ex.runTime = GetSecs - ex.startRun;
 ex.finalaudiostimulus = [];
 savedir = fullfile(ex.root,'data',sprintf('%s_%s/',subject,ex.version));
 if ~exist(savedir); mkdir(savedir); end
-savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_fix',subject,ex.version,num2str(ex.date)), '.mat'));
+savename = fullfile(savedir, strcat(sprintf('/%s_audio_visual_motion_%s_date%s_part3',subject,ex.version,num2str(ex.date)), '.mat'));
 save(savename,'ex','-v7.3')
 
 %End psychtoolbox screen
