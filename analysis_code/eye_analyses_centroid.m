@@ -12,7 +12,7 @@ pursuits = 222;
 saccades = 333;
 
 % basic settings
-sample_rate = 120; 
+sample_rate = 2000; 
 scale_factor = 2; 
 time_unit = (1000/sample_rate)/1000;
 dist_unit = scale_factor/60;
@@ -22,7 +22,7 @@ targetY_deg = 360*dist_unit;
 
 % saccade and fixation thresholds
 vel_threshold = 30; % deg 22-30 (majority: 30)
-length_threshold = 16 / 1000; % sec (>200 ms: fixations < 200 saccaades, >100 ms: fixations -- complex stimuli)
+length_threshold = 16 / 1000; % sec (>200 ms: fixations < 200 saccades, >100 ms: fixations -- complex stimuli)
 amp_threshold = 0.5; % deg
 dispersion_threshold = 1; % deg
 vel_crit_col = 1;
