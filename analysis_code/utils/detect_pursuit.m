@@ -1,4 +1,4 @@
-function [pursuit_index,classified] = detect_pursuit(eye_position_trace, sample_rate, classified)  
+function [pursuit_index,pursuit_onset, classified] = detect_pursuit(eye_position_trace, sample_rate, classified)  
 
 % eye movement classification
 fixations = 111;
@@ -12,11 +12,11 @@ dispersion_threshold = 1; % deg
 
 % fixation period
 dt_window_time = 100; % ms
-dt_window = dt_window_time / (1000/sample_rate);
+dt_window = dt_window_time / (1000/sample_rate); %in num samples 
 
 %% --- detect pursuit
 
-dt_window_begin = 1; %1s initial fixation
+dt_window_begin = 1*sample_rate; %1s initial fixation
 dt_window_end = min(dt_window_begin + dt_window, eyedur);
 
 while dt_window_begin < eyedur

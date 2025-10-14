@@ -9,6 +9,7 @@ time_unit = (1000/sample_rate)/1000; %interval between each sampled data point i
 %eyedur: length of eye trace in # of samples
 eyedur = length(eye_position_trace(:,1));
 
+
 % Compute velocity
 eye_velocity_trace(:,1) = gradient(eye_position_trace(:,1),time_unit);
 eye_velocity_trace(:,2) = gradient(eye_position_trace(:,2),time_unit);
