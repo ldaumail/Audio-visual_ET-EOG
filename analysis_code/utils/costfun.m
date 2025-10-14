@@ -12,10 +12,6 @@ slope2 = params(3);
 ic2 = params(4);
 breakpoint = params(5);
 
-% if slope1*breakpoint + ic1 ~= slope2*breakpoint + ic2
-%     sse = sse + regularization;
-% end
-
 if slope1 > slope2
     sse = sse + regularization;
 end
