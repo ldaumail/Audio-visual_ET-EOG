@@ -1,4 +1,4 @@
-function velocity_gain = pursuit_velocity_gain(classified, eye_position_trace, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, curr_speed)
+function [open_gain, closed_gain] = pursuit_velocity_gain(classified, eye_position_trace, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, curr_speed)
 %Loic Daumail 10/07/2025
 % slideornot      = 1;
 %curr_speed = target speed? in deg/sec
@@ -22,7 +22,7 @@ fit_index = find(plot_time>initialFixDur & plot_time<initialFixDur+fit_range);
 
 x_data = plot_time(fit_index);
 
-params0 = [0 0 2 -5 initialFixDur+0.09]; %slope 1, ic1, slope 2, ic2, breakpoint =initial params
+params0 = [0 0 0.5 -5 initialFixDur+0.09]; %slope 1, ic1, slope 2, ic2, breakpoint =initial params
 options = optimset('MaxFunEvals',100000,'MaxIter',100000);
 
 % fit_range_id = fit_range*sample_rate;
@@ -98,41 +98,41 @@ end
 
 classified2 = classified;
 classified2(plot_time >= breakpoint) = pursuits;
-% classified2(plot_time >= breakpoint & plot_time <= pursuit_onset) = pursuits;
+classified2(plot_time >= breakpoint & plot_time <= pursuit_onset) = pursuits;
 
-% if makeplots
-% figure('Position', [0 0 2500 1000]);
-% subplot(3,1,1)
-% plot(plot_time(1:length(target_velocity_trace)),target_velocity_trace,'k-');
-% hold on;
-% plot(plot_time,filtered_velocity,'b-');
-% hold on;
-% fit_plot_x = linspace(x_data(1),x_data(end),100);
-% fit_plot_y = func_piecewise(params_hat,fit_plot_x');
-% if ~isempty(fit_plot_y)
-%     plot(fit_plot_x,fit_plot_y,'r-');
-%     hold on;
-% end
-% plot(repmat(breakpoint,1,81),-40:40,'c--'); hold on;
-% % plot(repmat(pursuit_onset,1,81),-40:40,'g--'); hold on;
-% title(['smooth pursuit period ']);
-% xlabel('time (sec)');
-% ylabel('velocity (deg/s)');
-% axis([min(plot_time(1:length(target_velocity_trace))) max(plot_time(1:length(target_velocity_trace))) -40 40]);
-% legend('target velocity', 'filtered left eye velocity', 'regression fit', 'breakpoint')
-% 
-% subplot(3,1,2);
-% plot(plot_time(classified2==pursuits),eye_position_trace(classified2==pursuits,1),'r.'); hold on;
-% axis([min(plot_time(1:length(target_velocity_trace))) max(plot_time(1:length(target_velocity_trace))) -40 40]);
-% 
-% legend('smooth pursuit')
-% subplot(3,1,3);
-% plot(repmat(breakpoint,1,81),-40:40,'c-'); hold on;
-% legend('breakpoint')
+
+figure('Position', [0 0 2500 1000]);
+subplot(3,1,1)
+plot(plot_time(1:length(target_velocity_trace)),target_velocity_trace,'k-');
+hold on;
+plot(plot_time,filtered_velocity,'b-');
+hold on;
+fit_plot_x = linspace(x_data(1),x_data(end),100);
+fit_plot_y = func_piecewise(params_hat,fit_plot_x');
+if ~isempty(fit_plot_y)
+    plot(fit_plot_x,fit_plot_y,'r-');
+    hold on;
+end
+plot(repmat(breakpoint,1,81),-40:40,'c--'); hold on;
+% plot(repmat(pursuit_onset,1,81),-40:40,'g--'); hold on;
+title(['smooth pursuit period ']);
+xlabel('time (sec)');
+ylabel('velocity (deg/s)');
+axis([min(plot_time(1:length(target_velocity_trace))) max(plot_time(1:length(target_velocity_trace))) -40 40]);
+legend('target velocity', 'filtered left eye velocity', 'regression fit', 'breakpoint')
+
+subplot(3,1,2);
+plot(plot_time(classified2==pursuits),eye_position_trace(classified2==pursuits,1),'r.'); hold on;
+axis([min(plot_time(1:length(target_velocity_trace))) max(plot_time(1:length(target_velocity_trace))) -40 40]);
+
+legend('smooth pursuit')
+subplot(3,1,3);
+plot(repmat(breakpoint,1,81),-40:40,'c-'); hold on;
+legend('breakpoint')
 % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
 % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_regression_%s.jpg',name,conds{c},whichtrial,version)));
 
-% end
+
 
 %%% --- calculate pursuit gain
 % ratio of the average pursuit velocity to target
@@ -154,13 +154,13 @@ if ~sum(classified==pursuits) == 0
         end
         if length(filtered_velocity) > breakpoint_index+open_window
             open_range = breakpoint_index:breakpoint_index+open_window;
-            open_gain = mean(filtered_velocity(open_range))/target_velocity_trace(1,initialFixDur*sample_rate+1);
-            slip_open = mean(filtered_velocity(open_range))-target_velocity_trace(1,initialFixDur*sample_rate+1);
-            rel_slip_open = mean((filtered_velocity(open_range))-target_velocity_trace(1,initialFixDur*sample_rate+1)./filtered_velocity(open_range));
+            open_gain = mean(filtered_velocity(open_range))/target_velocity_trace(1,initialFixDur*sample_rate+2);
+            slip_open = mean(filtered_velocity(open_range))-target_velocity_trace(1,initialFixDur*sample_rate+2);
+            rel_slip_open = mean((filtered_velocity(open_range))-target_velocity_trace(1,initialFixDur*sample_rate+2)./filtered_velocity(open_range));
             if length(filtered_velocity) < max(closed_range)
                 closed_range = closed_window_begin:length(filtered_velocity);
             end
-            closed_gain = mean(filtered_velocity(closed_range))/target_velocity_trace(1,initialFixDur*sample_rate+1);
+            closed_gain = mean(filtered_velocity(closed_range))/target_velocity_trace(1,initialFixDur*sample_rate+2);
             peak_velo = max(filtered_velocity(open_range));
             peak_acc = max(diff(filtered_velocity(open_range)));
             rmse_position_open = rmse(eye_position_trace(open_range,:),[target_position_trace(open_range)', repmat(0,length(open_range), 1)]); %X and Y target position: [target_position_trace(open_range)', repmat(0,length(open_range), 1)]

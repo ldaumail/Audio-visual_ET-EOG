@@ -92,25 +92,25 @@ sac_index = vel_index;
 classified(sac_index) = saccades;
 
 % count saccades
-tmp_sac = diff(sac_index);
-void_sac_id = sac_index(tmp_sac==2);
-nsac = nsac - sum(tmp_sac==2);
-cumamp_inv = cumamp - cumamp_vis;
+% tmp_sac = diff(sac_index);
+% void_sac_id = sac_index(tmp_sac==2);
+% nsac = nsac - sum(tmp_sac==2);
+% cumamp_inv = cumamp - cumamp_vis;
 
 % find the last saccade onset and offset
-if ~isempty(final_sac_onset)
-    last_sac_onset = final_sac_onset(end);
-    if ~isempty(void_sac_id)
-        if inv_sac_onset(end) == void_sac_id
-            last_sac_onset = final_sac_onset(end-1);
-        end
-    end
-    last_sac_offset = final_sac_offset(end);
-    first_sac_onset = final_sac_onset(1)*time_unit;
-    first_sac_offset = final_sac_offset(1)*time_unit;
-    last_sac_onset = last_sac_onset*time_unit;
-    last_sac_offset = last_sac_offset*time_unit;
-end
+% if ~isempty(final_sac_onset)
+%     last_sac_onset = final_sac_onset(end);
+%     if ~isempty(void_sac_id)
+%         if inv_sac_onset(end) == void_sac_id
+%             last_sac_onset = final_sac_onset(end-1);
+%         end
+%     end
+%     last_sac_offset = final_sac_offset(end);
+%     first_sac_onset = final_sac_onset(1)*time_unit;
+%     first_sac_offset = final_sac_offset(1)*time_unit;
+%     last_sac_onset = last_sac_onset*time_unit;
+%     last_sac_offset = last_sac_offset*time_unit;
+% end
 
 
 end

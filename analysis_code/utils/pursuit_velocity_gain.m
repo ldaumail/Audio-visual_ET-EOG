@@ -1,11 +1,13 @@
 function [open_gain, closed_gain] = pursuit_velocity_gain(classified, eye_position_trace, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, curr_speed)
 %Loic Daumail 10/07/2025
-% slideornot      = 1;
 %curr_speed = target speed? in deg/sec
 %curr_speed = driftingSpeedsCond(whichtrial);
 
 
 pursuits = 222;
+open_gain = NaN; 
+closed_gain = NaN;
+breakpoint = NaN;
 eyedur = length(eye_position_trace(:,1));
 time_unit = (1000/sample_rate)/1000; %interval between each sampled data point in second
 initialFixDur = 1;
@@ -25,15 +27,16 @@ x_data = plot_time(fit_index);
 params0 = [0 0 2 -5 initialFixDur+0.09]; %slope 1, ic1, slope 2, ic2, breakpoint =initial params
 options = optimset('MaxFunEvals',100000,'MaxIter',100000);
 
+% slideornot      = 1;
 % fit_range_id = fit_range*sample_rate;
-
+% 
 % slide_start_id = min(find(plot_time>0))+initialFixDur*sample_rate;
 % slide_end_id = max(find(plot_time>0 & plot_time<=fit_range))+initialFixDur*sample_rate;
 
 % if slideornot == 1
 % slide_range = slide_start_id:slide_end_id;
 % else
- % slide_range = slide_start_id;
+%  slide_range = slide_start_id;
 % end
 % 
 % pp = 1;
@@ -81,13 +84,13 @@ options = optimset('MaxFunEvals',100000,'MaxIter',100000);
 % ic_second = nanmean(ic_secondmat);
 % meanparams = [slope_first ic_first slope_second ic_second breakpoint];
 
-% fit_index = slide_range+(fit_range_id)-1;
+
 t_x_data = plot_time(fit_index);
 t_y_data = filtered_velocity(fit_index);
 
 [params_hat, sse] = fminsearch(@(params) costfun(params,t_x_data,t_y_data),params0,options);
 
-if (params_hat(3) - params_hat(1)) > 0.25*curr_speed && params_hat(5) > 0.05 && params_hat(5) < plot_time(end)
+if (params_hat(3) - params_hat(1)) > 0.25*curr_speed && params_hat(5) > 0.05 && params_hat(5) < plot_time(end) %params_hat(5) > 0.05
     breakpoint = params_hat(5);
     slope_first = params_hat(1);
     ic_first = params_hat(2);
@@ -96,11 +99,11 @@ if (params_hat(3) - params_hat(1)) > 0.25*curr_speed && params_hat(5) > 0.05 && 
 end
 
 
-classified2 = classified;
-classified2(plot_time >= breakpoint) = pursuits;
+% classified2 = classified;
+% classified2(plot_time >= breakpoint) = pursuits;
 % classified2(plot_time >= breakpoint & plot_time <= pursuit_onset) = pursuits;
-
-% if makeplots
+% 
+% 
 % figure('Position', [0 0 2500 1000]);
 % subplot(3,1,1)
 % plot(plot_time(1:length(target_velocity_trace)),target_velocity_trace,'k-');
@@ -132,7 +135,7 @@ classified2(plot_time >= breakpoint) = pursuits;
 % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
 % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_regression_%s.jpg',name,conds{c},whichtrial,version)));
 
-% end
+
 
 %%% --- calculate pursuit gain
 % ratio of the average pursuit velocity to target

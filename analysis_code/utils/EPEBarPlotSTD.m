@@ -55,7 +55,8 @@ for e =1:size(yvar,3)
     legend(conditions, 'Location','bestoutside')
 end
 
-
+hold on
+yline([0 0], 'LineWidth',2)
 % ax = gca;
 % ax.XTick = [1:length(speeds)];
 % ax.XTickLabels = speeds;
