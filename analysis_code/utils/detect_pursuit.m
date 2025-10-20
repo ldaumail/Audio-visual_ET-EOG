@@ -31,8 +31,8 @@ while dt_window_begin < eyedur
         for i = dt_window_begin:dt_window_end
             if classified(i) ~= saccades
                 classified(i) = fixations;
-            end % if
-        end % for
+            end % 
+        end % 
         dt_window_begin = dt_window_end + 1;
         dt_window_end = min(dt_window_begin + dt_window, eyedur);
     else
@@ -45,7 +45,7 @@ while dt_window_begin < eyedur
             end
         end
         dt_window_begin = dt_window_begin + 1;
-    end % if
+    end 
 end
 
 pursuit_index = find(classified == pursuits);

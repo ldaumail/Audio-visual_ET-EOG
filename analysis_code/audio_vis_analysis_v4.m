@@ -338,11 +338,11 @@ for c = 9:10
 
         if contains(conds{c}, 'Left')
             eye_velocity_removed = (-1)*eye_velocity_removed;
-            target_position_trace = [repmat(exptDat.ex.dot_displacement_deg,1,sample_rate*exptDat.ex.initialFixDur), (-1)*(-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(whichtrial)/sample_rate:exptDat.ex.dot_displacement_deg)];
+            target_position_trace = [repmat(exptDat.ex.dot_displacement_deg,1,sample_rate*exptDat.ex.initialFixDur-1), (-1)*(-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(whichtrial)/sample_rate:exptDat.ex.dot_displacement_deg)];
             target_velocity_trace = -gradient(target_position_trace, time_unit);
 
         elseif contains(conds{c}, 'Right')
-            target_position_trace = [(-1)*repmat(exptDat.ex.dot_displacement_deg,1,sample_rate*exptDat.ex.initialFixDur), (-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(whichtrial)/sample_rate:exptDat.ex.dot_displacement_deg)];
+            target_position_trace = [(-1)*repmat(exptDat.ex.dot_displacement_deg,1,sample_rate*exptDat.ex.initialFixDur-1), (-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(whichtrial)/sample_rate:exptDat.ex.dot_displacement_deg)];
             target_velocity_trace = gradient(target_position_trace, time_unit);
         end
 
@@ -474,9 +474,13 @@ for c = 9:10
         % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
         % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_filtered_velocity_%s.jpg',name,conds{c},whichtrial,version)));
 
-        [open_velo_gain(whichtrial,c-8), closed_velo_gain(whichtrial,c-8)] = pursuit_velocity_gain(classified, eye_position_trace, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, driftingSpeedsCond(whichtrial));
+        [open_velo_gain(whichtrial,c-8), closed_velo_gain(whichtrial,c-8)] = pursuit_velocity_gain(classified, eye_position_removed, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, driftingSpeedsCond(whichtrial), whichtrial);
     end
 end
+
+% Quality results assessment
+% 100*sum(isnan(open_velo_gain),1)./size(open_velo_gain,1)
+% 100*sum(isnan(closed_velo_gain),1)./size(closed_velo_gain,1)
 
 %% Average velocity gains across trials of same target speed
 speeds = exptDat.ex.driftingSpeeds;

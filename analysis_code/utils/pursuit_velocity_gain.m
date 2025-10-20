@@ -1,4 +1,4 @@
-function [open_gain, closed_gain] = pursuit_velocity_gain(classified, eye_position_trace, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, curr_speed)
+function [open_gain, closed_gain] = pursuit_velocity_gain(classified, eye_position_trace, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, curr_speed, tnum)
 %Loic Daumail 10/07/2025
 %curr_speed = target speed? in deg/sec
 %curr_speed = driftingSpeedsCond(whichtrial);
@@ -90,7 +90,7 @@ t_y_data = filtered_velocity(fit_index);
 
 [params_hat, sse] = fminsearch(@(params) costfun(params,t_x_data,t_y_data),params0,options);
 
-if (params_hat(3) - params_hat(1)) > 0.25*curr_speed && params_hat(5) > 0.05 && params_hat(5) < plot_time(end) %params_hat(5) > 0.05
+if (params_hat(3) - params_hat(1)) > 0.25*curr_speed && params_hat(5) >= initialFixDur+0.05 && params_hat(5) < plot_time(end) %params_hat(5) > 0.05
     breakpoint = params_hat(5);
     slope_first = params_hat(1);
     ic_first = params_hat(2);
@@ -100,7 +100,6 @@ end
 
 
 % classified2 = classified;
-% classified2(plot_time >= breakpoint) = pursuits;
 % classified2(plot_time >= breakpoint & plot_time <= pursuit_onset) = pursuits;
 % 
 % 
@@ -118,21 +117,28 @@ end
 % end
 % plot(repmat(breakpoint,1,81),-40:40,'c--'); hold on;
 % % plot(repmat(pursuit_onset,1,81),-40:40,'g--'); hold on;
-% title(['smooth pursuit period ']);
+% if ~isnan(breakpoint)
+%     title(['smooth pursuit period, breakpoint = Success']);
+% else
+%     title(['smooth pursuit period, breakpoint = Fail ']);
+% end
 % xlabel('time (sec)');
 % ylabel('velocity (deg/s)');
 % axis([min(plot_time(1:length(target_velocity_trace))) max(plot_time(1:length(target_velocity_trace))) -40 40]);
 % legend('target velocity', 'filtered left eye velocity', 'regression fit', 'breakpoint')
 % 
 % subplot(3,1,2);
-% plot(plot_time(classified2==pursuits),eye_position_trace(classified2==pursuits,1),'r.'); hold on;
+% % plot(plot_time(classified2==pursuits),eye_position_trace(classified2==pursuits,1),'r.'); hold on;
+% plot(plot_time,eye_position_trace(:,1),'r.'); hold on;
 % axis([min(plot_time(1:length(target_velocity_trace))) max(plot_time(1:length(target_velocity_trace))) -40 40]);
 % 
 % legend('smooth pursuit')
 % subplot(3,1,3);
-% plot(repmat(breakpoint,1,81),-40:40,'c-'); hold on;
+% plot(repmat(params_hat(5),1,81),-40:40,'c-'); hold on;
 % legend('breakpoint')
 % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
+% saveas(gcf,strcat(plotdir, sprintf('%s_trial%d_eyelink_regression_%s.jpg','sub-02',tnum,'v04')));
+
 % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_regression_%s.jpg',name,conds{c},whichtrial,version)));
 
 
