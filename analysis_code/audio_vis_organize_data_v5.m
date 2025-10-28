@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-01'};
+names = {'sub-02'};
 
 for i =1:length(names)
     name = names{i};
@@ -482,4 +482,10 @@ for i =1:length(names)
     end
     data.(subj).eog_xpos = origX;
 
+    %% Save data
+
+    save(strcat(folderDir, sprintf('%s_model_data_audio_visual_motion_v%s_date20251015T160857', subj, version)), 'data')
+
+
 end
+

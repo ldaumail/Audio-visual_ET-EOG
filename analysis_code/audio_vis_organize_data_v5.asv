@@ -483,3 +483,7 @@ for i =1:length(names)
     data.(subj).eog_xpos = origX;
 
 end
+
+%% Save data
+
+save(srcat(folderDir, 'filename.mat'), sprintf('%s_model_data_audio_visual_motion_%s_date20251015T160857', subj, version))
