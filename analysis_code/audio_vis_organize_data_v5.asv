@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-01'};
+names = {'sub-03'};
 
 for i =1:length(names)
     name = names{i};
@@ -106,10 +106,10 @@ for i =1:length(names)
                 % % %trial plot
                 % figure('Position',[100 100 1200 600]); %
                 % time = [repmat(0,1,sample_rate), 1:1/sample_rate:trialDurations(n)+1];
-                % plot(time(1:end),origX(1:length(time(1:end)),n,c,1),'LineWidth', 2,'col','r')
+                % plot(time(1:end-1),origX(1:length(time(1:end-1)),n,c-4,1),'LineWidth', 2,'col','r')
                 % hold on
                 % %stim trajectory
-                % xtraj = [repmat(20,1,sample_rate), (-1)*(-exptDat.ex.dot_displacement_deg:driftingSpeedsCond(n)/sample_rate:exptDat.ex.dot_displacement_deg)];
+                % xtraj = [repmat(20,1,sample_rate), (-1)*(-exptDat1.ex.dot_displacement_deg:driftingSpeedsCond(n)/sample_rate:exptDat1.ex.dot_displacement_deg)];
                 % plot(time, xtraj ,'LineWidth', 2,'col','b')
                 % sgtitle(strcat(conds{c}),'fontweight','bold','Interpreter', 'none')
                 % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
@@ -142,6 +142,7 @@ data.(subj).sacc_free_eye_posy = nan(size(data.(subj).origy));
 data.(subj).saccadesTrs = zeros(size(data.(subj).origx));
 data.(subj).pursuitTrs = zeros(size(data.(subj).origx));
 data.(subj).target_pos = nan(size(data.(subj).origx,1,2,3));
+data.(subj).velocity_gain = nan(size(data.(subj).origy));
 
 for whicheye = 1:2 %1 = left, 2 = right
     % open_velo_gain = nan(length(longSpeedShuffle(contains(edfConds, conds(9)))), 5);
@@ -265,7 +266,7 @@ for whicheye = 1:2 %1 = left, 2 = right
             % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_saccade_pursuit_fixation_%s.jpg',name,conds{c},whichtrial,version)));
             %% --- interpolation (velocity)
 
-            % eye_velocity_interp = fillmissing(eye_velocity_removed(:,1),'linear','EndValues','extrap');
+            eye_velocity_interp = fillmissing(eye_velocity_removed(:,1),'linear','EndValues','extrap');
 
             %% plot
             % figure();
@@ -297,14 +298,15 @@ for whicheye = 1:2 %1 = left, 2 = right
             % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_interp_velocity_%s.jpg',name,conds{c},whichtrial,version)));
             %% --- Butterworth filter velocity
 
-            % fc = 40; % cut off frequency
-            % fs = sample_rate;
-            % n_order = 2; % 2nd order
-            % 
-            % [b,a] = butter(n_order,fc/(fs/2)); %         freqz(b,a);
-            % 
-            % filtered_velocity = filter(b,a,eye_velocity_interp);
-            % filtered_velocity_trials(:,whichtrial,c-8) = filtered_velocity;
+            fc = 40; % cut off frequency
+            fs = sample_rate;
+            n_order = 2; % 2nd order
+
+            [b,a] = butter(n_order,fc/(fs/2)); %         freqz(b,a);
+
+            filtered_velocity = filter(b,a,eye_velocity_interp);
+            % filtered_velocity_trials(:,whichtrial,c-4) = filtered_velocity;
+
             % figure();
             % plot(plot_time_removed,eye_velocity_interp(:,1));
             % hold on
@@ -316,7 +318,7 @@ for whicheye = 1:2 %1 = left, 2 = right
             % plotdir = strcat('/Users/ldaumail3/Documents/research/eyetracking_EOG/Audio_Visual_EOG-main/analysis_plots/');
             % saveas(gcf,strcat(plotdir, sprintf('%s_%s_trial%d_eyelink_filtered_velocity_%s.jpg',name,conds{c},whichtrial,version)));
 
-            % [open_velo_gain(whichtrial,c-8), closed_velo_gain(whichtrial,c-8)] = pursuit_velocity_gain(classified, eye_position_removed, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, driftingSpeedsCond(whichtrial), whichtrial);
+            [open_velo_gain(whichtrial,c-4), closed_velo_gain(whichtrial,c-4)] = pursuit_velocity_gain(classified, eye_position_removed, filtered_velocity, target_position_trace, target_velocity_trace, sample_rate, driftingSpeedsCond(whichtrial), whichtrial);
         end
     end
 end
@@ -347,8 +349,15 @@ for i =1:length(names)
     EL_TTL_pulse_off(:,i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_Off'));
 
     TTL_pulse = find(diff(acq_data.data(:,9)).^2 > 0)+1;
-    acq_TTL_pulse_on(:,i) = TTL_pulse([1,3,5]);
-    acq_TTL_pulse_off(:,i) = TTL_pulse([2,4,6]);
+
+    if length(TTL_pulse) == 6
+        acq_TTL_pulse_on(:,i) = TTL_pulse([1,3,5]);
+        acq_TTL_pulse_off(:,i) = TTL_pulse([2,4,6]);
+    elseif length(TTL_pulse) == 7
+        acq_TTL_pulse_on(:,i) = TTL_pulse([2,4,6]);
+        acq_TTL_pulse_off(:,i) = TTL_pulse([3,5,7]);
+    end
+
     % figure();
     % subplot(3,1,1)
     % plot(acq_data.data(:,1))
@@ -373,7 +382,7 @@ for i =1:length(names)
     eyeLink_acq_off_diff = EL_TTL_pulse_off(:,i)*2 - acq_TTL_pulse_off(:,i);
 
 
-
+    clear origX origY
     origX = nan((1+max(exptDat1.ex.trialdur))*sample_rate,exptDat1.ex.repsPerRun, length(exptDat1.ex.conds)+length(exptDat2.ex.conds)+length(exptDat3.ex.conds),2);
     origY = nan((1+max(exptDat1.ex.trialdur))*sample_rate,exptDat1.ex.repsPerRun, length(exptDat1.ex.conds)+length(exptDat2.ex.conds)+length(exptDat3.ex.conds),2);
 
@@ -383,24 +392,39 @@ for i =1:length(names)
     %Correlate Eyelink Left Eye position digital data of first trial of visually guided condition with EOG digital data
     %This step is for detecting any kind of additional offset
     %between the EOG adjusted event markers and Eyelink event markers
-    acqCondIdx = edfDat.Events.Messages.time(contains(edfDat.Events.Messages.info, conds(5))).*2 - eyeLink_acq_on_diff(3); %times of onset of specific condition
+    driftingSpeedsCond = longSpeedShuffle(contains(edfConds, conds(9))); %all drifting speeds of all trials for a given condition (speed varies across trials)
+    acqCondIdx = edfDat.Events.Messages.time(contains(edfDat.Events.Messages.info, conds(9))).*2 - eyeLink_acq_on_diff(3); %times of onset of specific condition
     acqonsetTcond = [];
     for l =1:length(acqCondIdx)
         acqonsetTcond = [acqonsetTcond acqonsetIdx(find(acqonsetIdx>=acqCondIdx(l),1,'first'))];
     end
-
+    
+    %1: prepare Eyelink digital trial eye position data
     eyelink_trL = data.(subj).origx(1:sum(~isnan(data.(subj).origx(:,1,5,1))),1,5,1);
+    nan_vals = isnan(eyelink_trL); %Eyelink has nans due to blinks, so we need to exclude these to calculate pearson's R
+    eyelink_trL_noNan = eyelink_trL(~nan_vals);
+
+    %2: prepare biopac Eyelink "analog" trial data
     acqSampleIdx = edfDat.RawEdf.FSAMPLE.time.*2 - eyeLink_acq_on_diff(3);
     trstart = acqSampleIdx(acqSampleIdx == acqonsetTcond(1));
     trend = round(acqSampleIdx(acqSampleIdx == acqonsetTcond(1))+sample_rate*(exptDat1.ex.initialFixDur+ (2*exptDat1.ex.dot_displacement_deg)/driftingSpeedsCond(1)))-1;
-    acqtrL = acq_data.data(trstart(1)-600:trend(1)+600,1);
+    acq_trL = acq_data.data(trstart(1)-600:trend(1)+600,1);
+    
     for e =1:1200
-        corrMat = corrcoef(eyelink_trL,acqtrL(e:e+length(eyelink_trL)-1));
+        acq_dat = acq_trL(e:e+length(eyelink_trL)-1);
+        corrMat = corrcoef(eyelink_trL_noNan, acq_dat(~nan_vals));
         pearsonR(e) = corrMat(1,2);
     end
     [M, maxCorrIdx] = max(pearsonR);
     offsetIdx = maxCorrIdx-600;
 
+    % figure();
+    % subplot(2,1,1)
+    % plot(eyelink_trL)
+    % subplot(2,1,2)
+    % plot(acq_data.data(trstart(1):trend(1),1))
+    % 
+    driftingSpeeds = nan(length(driftingSpeedsCond), length(conds));
     % ----- Get EOG data ------ %
     for c =1:length(conds)
         clear acqCondIdx acqonsetTcond elonsetTcond trstart trend acqtrL
@@ -410,6 +434,8 @@ for i =1:length(names)
         %informative variables
         longSpeedShuffle = [exptDat1.ex.longSpeedShuffle; exptDat2.ex.longSpeedShuffle; exptDat3.ex.longSpeedShuffle];
         driftingSpeedsCond = longSpeedShuffle(contains(edfConds, conds(c))); %all drifting speeds of all trials for a given condition (speed varies across trials)
+        driftingSpeeds(:,c) = driftingSpeedsCond;
+        
         trialdur = [exptDat1.ex.trialdur;exptDat2.ex.trialdur;exptDat3.ex.trialdur];
         trialDurations = trialdur(contains(edfConds, conds(c)));% durations of trials for specific condition
 
@@ -431,13 +457,13 @@ for i =1:length(names)
             xtrR = acq_data.data(trstart(1):trend(1),8); 
            
             
-            
-            figure()
-            subplot(6,1,1)
-            plot(xtrL)
-            subplot(6,1,2)
-            plot(xtrR)
-            subplot(6,1,3)
+            % 
+            % figure()
+            % subplot(6,1,1)
+            % plot(xtrL)
+            % subplot(6,1,2)
+            % plot(xtrR)
+            % subplot(6,1,3)
 
             origX(1:length(xtrL),n,c,1) = xtrL;
             origX(1:length(xtrR),n,c,2) = xtrR;
@@ -481,9 +507,12 @@ for i =1:length(names)
         
     end
     data.(subj).eog_xpos = origX;
+    data.(subj).driftingSpeeds = driftingSpeeds;
+
+    %% Save data
+
+    save(strcat(folderDir, sprintf('%s_model_data_audio_visual_motion_v%s_date20251021T180711', name, version)), 'data')
+
 
 end
 
-%% Save data
-
-save(srcat(folderDir, 'filename.mat'), sprintf('%s_model_data_audio_visual_motion_%s_date20251015T160857', subj, version))
