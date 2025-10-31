@@ -172,8 +172,8 @@ if ~sum(classified==pursuits) == 0
             closed_gain = mean(filtered_velocity(closed_range))/target_velocity_trace(1,initialFixDur*sample_rate+2);
             peak_velo = max(filtered_velocity(open_range));
             peak_acc = max(diff(filtered_velocity(open_range)));
-            rmse_position_open = rmse(eye_position_trace(open_range,:),[target_position_trace(open_range)', repmat(0,length(open_range), 1)]); %X and Y target position: [target_position_trace(open_range)', repmat(0,length(open_range), 1)]
-            rmse_position_closed = rmse(eye_position_trace(closed_range,:),[target_position_trace(closed_range)', repmat(0,length(closed_range), 1)]); %
+            % rmse_position_open = rmse(eye_position_trace(open_range,:),[target_position_trace(open_range)', repmat(0,length(open_range), 1)]); %X and Y target position: [target_position_trace(open_range)', repmat(0,length(open_range), 1)]
+            % rmse_position_closed = rmse(eye_position_trace(closed_range,:),[target_position_trace(closed_range)', repmat(0,length(closed_range), 1)]); %
         end
     end
 

@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-03'};
+names = {'sub-04'};
 
 for i =1:length(names)
     name = names{i};
@@ -188,7 +188,11 @@ for whicheye = 1:2 %1 = left, 2 = right
             data.(subj).target_pos(1:length(target_position_trace), whichtrial, c-4) = target_position_trace;
 
             % target_velocity_trials(1:length(target_velocity_trace),whichtrial,c-8) = target_velocity_trace;
-            
+            % figure();
+            % plot(eye_position_removed)
+            % hold on
+            % plot(target_position_trace)
+
             %% plot
             % time_unit = (1000/sample_rate)/1000; %interval between each sampled data point in second
             % eyedur = length(eye_position_trace(:,1));
@@ -196,13 +200,13 @@ for whicheye = 1:2 %1 = left, 2 = right
             % plot_time = (plot_time .* time_unit);
             % plot_time_removed = plot_time;
             % plot_time_removed(sac_index) = NaN;
-            %
+            % 
             % saccade_vec = zeros(length(eye_position_trace),1);
             % saccade_vec(sac_index) = 1;
-            %
-            %
+            % 
+            % 
             % plot_time2 = [0:1/sample_rate:trialDurations(whichtrial)+1];
-            %
+            % 
             % figure();
             % subplot(4,1,1)
             % plot(plot_time2,target_position_trace, 'LineWidth', 2);
@@ -212,22 +216,22 @@ for whicheye = 1:2 %1 = left, 2 = right
             % xlim([0 length(target_position_trace)/sample_rate])
             % ylim([-25 25])
             % title('Gaze location, target location');
-            %
+            % 
             % subplot(4,1,2)
             % plot(plot_time_removed,eye_velocity_removed(:,1));
             % xlim([0 length(target_position_trace)/sample_rate])
             % ylim([-40 40])
             % % plot(plot_time2,target_velocity_trace,'k-'); hold on;
-            %
+            % 
             % ylabel('velocity (deg/sec)');
             % title('Saccade removed velocity');
-            %
+            % 
             % subplot(4,1,3)
             % plot(plot_time_removed,data.(subj).blinkTrs(:, whichtrial, c, whicheye));
             % xlim([0 length(target_position_trace)/sample_rate])
             % ylim([0 2])
             % title('Blinks');
-            %
+            % 
             % subplot(4,1,4)
             % plot(plot_time,saccade_vec);
             % xlim([0 length(target_position_trace)/sample_rate])
@@ -329,6 +333,7 @@ end
 %% add eyelink cond names to the structure
 
 data.eyelink_conds = conds(5:end);
+data.biopac_conds = conds;
 data.leftEye = 1;
 data.rightEye = 2;
 
@@ -514,8 +519,7 @@ for i =1:length(names)
 
     %% Save data
 
-    save(strcat(folderDir, sprintf('%s_model_data_audio_visual_motion_v%s_date20251021T180711', name, version)), 'data')
-
+    save(strcat(folderDir, sprintf('%s_model_data_audio_visual_motion_v%s', name, version)), 'data')
 
 end
 
