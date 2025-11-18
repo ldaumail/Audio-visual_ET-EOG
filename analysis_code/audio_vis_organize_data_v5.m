@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-04'};
+names = {'sub-02'};
 
 for i =1:length(names)
     name = names{i};
@@ -352,6 +352,16 @@ for i =1:length(names)
     fileNames = dir(folderDir);
     acqName = strcat(folderDir,fileNames(contains({fileNames.name},'eog.mat')).name);
     acq_data = load(acqName);
+    
+    %lowpass filter EOG data
+    fc = 35;                 % cutoff Hz (adjust if you choose)
+    order = 4;
+    % design
+    [b,a] = butter(order, fc/nyq, 'low');
+    filt_eog_L = filtfilt(b,a,acq_data.data(:,7));
+    acq_data.data(:,7) = filt_eog_L;
+    filt_eog_R = filtfilt(b,a,acq_data.data(:,8));
+    acq_data.data(:,8) = filt_eog_R;
 
     EL_TTL_pulse_on(:,i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_On'));
     EL_TTL_pulse_off(:,i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_Off'));
@@ -367,14 +377,21 @@ for i =1:length(names)
     end
 
     % figure();
-    % subplot(3,1,1)
+    % subplot(2,1,1)
     % plot(acq_data.data(:,1))
+    % xlim([11460000; 11550000])
+    % subplot(2,1,2)
+    % plot(acq_data.data(:,7), col = 'b')
+    % hold on
+    % plot(filt_eog_L,col = 'r')
     % ylabel('Left X')
-    % % xlim([11821000; 11830000])
-    % % xline(11821100)
-    % % xlim([2039250; 2041450])
+    % xlim([11460000; 11550000])
+    % xline(11821100)
+    % xlim([2039250; 2041450])
     % subplot(3,1,2)
-    % plot(acq_data.data(:,2))
+    % plot(acq_data.data(:,8))
+    % hold on
+    % plot(filt_eog_R)
     % ylabel('Left Y')
     % % xlim([2039250; 2041450])
     % subplot(3,1,3)
