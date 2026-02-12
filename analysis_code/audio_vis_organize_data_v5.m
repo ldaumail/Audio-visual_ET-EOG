@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-02'};
+names = {'sub-10'};
 
 for i =1:length(names)
     name = names{i};
@@ -119,8 +119,6 @@ for i =1:length(names)
             end
         end
              
-
-
 
     subj = sprintf('sub0%d',i);
     data.(subj).origx = origX; %origx and origy are all trials after blink removal, and before removing outliers
@@ -354,6 +352,7 @@ for i =1:length(names)
     acq_data = load(acqName);
     
     %lowpass filter EOG data
+    nyq = sample_rate/2;
     fc = 35;                 % cutoff Hz (adjust if you choose)
     order = 4;
     % design
@@ -376,15 +375,15 @@ for i =1:length(names)
         acq_TTL_pulse_off(:,i) = TTL_pulse([3,5,7]);
     end
 
-    % figure();
-    % subplot(2,1,1)
-    % plot(acq_data.data(:,1))
+    figure();
+    subplot(2,1,1)
+    plot(acq_data.data(:,1))
     % xlim([11460000; 11550000])
-    % subplot(2,1,2)
-    % plot(acq_data.data(:,7), col = 'b')
-    % hold on
-    % plot(filt_eog_L,col = 'r')
-    % ylabel('Left X')
+    subplot(2,1,2)
+    plot(acq_data.data(:,7), col = 'b')
+    hold on
+    plot(filt_eog_L,col = 'r')
+    ylabel('Left X')
     % xlim([11460000; 11550000])
     % xline(11821100)
     % xlim([2039250; 2041450])
