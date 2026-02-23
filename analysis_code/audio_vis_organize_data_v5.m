@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-10'};
+names = {'sub-08'};
 
 for i =1:length(names)
     name = names{i};
@@ -353,15 +353,39 @@ for i =1:length(names)
     
     %lowpass filter EOG data
     nyq = sample_rate/2;
-    fc = 35;                 % cutoff Hz (adjust if you choose)
-    order = 4;
-    % design
-    [b,a] = butter(order, fc/nyq, 'low');
-    filt_eog_L = filtfilt(b,a,acq_data.data(:,7));
-    acq_data.data(:,7) = filt_eog_L;
-    filt_eog_R = filtfilt(b,a,acq_data.data(:,8));
-    acq_data.data(:,8) = filt_eog_R;
+    % fc = 35;                 % cutoff Hz (adjust if you choose)
+    % order = 4;
+    % % design
+    % [b,a] = butter(order, fc/nyq, 'low');
+    % filt_eog_L = filtfilt(b,a,acq_data.data(:,7));
+    % acq_data.data(:,7) = filt_eog_L;
+    % filt_eog_R = filtfilt(b,a,acq_data.data(:,8));
+    % acq_data.data(:,8) = filt_eog_R;
 
+    ds_factor = 5;
+    new_fs = sample_rate / ds_factor;
+    nyq_ds = new_fs / 2;
+    
+    fc_hp = 0.1;       % Butterworth High-pass
+    fc_lp = 35;        % Butterworth Low-pass
+    order = 4;         % Filter order
+
+    % Downsample to improve numerical conditioning
+    raw_ds_L = resample(acq_data.data(:,7), 1, ds_factor);
+    raw_ds_R = resample(acq_data.data(:,8), 1, ds_factor);
+
+    %SOS (second order sections, to filter sequentially and reduce filter load)
+    [sos_hp, g_hp] = butter(order, [fc_hp  fc_lp]/nyq_ds, 'bandpass');
+    
+    %Apply filter
+    filt_eog_L = filtfilt(sos_hp, g_hp, raw_ds_L);
+    filt_eog_R = filtfilt(sos_hp, g_hp, raw_ds_R);
+
+    %Upsample
+    us_factor = 5;
+    upsampled_filt_eog_L = resample(filt_eog_L , us_factor, 1);
+    upsampled_filt_eog_R = resample(filt_eog_R , us_factor, 1);
+    
     EL_TTL_pulse_on(:,i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_On'));
     EL_TTL_pulse_off(:,i) = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'TTL_Pulse_Off'));
 
@@ -375,15 +399,15 @@ for i =1:length(names)
         acq_TTL_pulse_off(:,i) = TTL_pulse([3,5,7]);
     end
 
-    figure();
-    subplot(2,1,1)
-    plot(acq_data.data(:,1))
-    % xlim([11460000; 11550000])
-    subplot(2,1,2)
-    plot(acq_data.data(:,7), col = 'b')
-    hold on
-    plot(filt_eog_L,col = 'r')
-    ylabel('Left X')
+    % figure();
+    % subplot(2,1,1)
+    % plot(acq_data.data(:,1))
+    % % xlim([11460000; 11550000])
+    % subplot(2,1,2)
+    % plot(acq_data.data(:,7), col = 'b')
+    % hold on
+    % plot(filt_eog_L,col = 'r')
+    % ylabel('Left X')
     % xlim([11460000; 11550000])
     % xline(11821100)
     % xlim([2039250; 2041450])
@@ -409,7 +433,8 @@ for i =1:length(names)
     clear origX origY
     origX = nan((1+max(exptDat1.ex.trialdur))*sample_rate,exptDat1.ex.repsPerRun, length(exptDat1.ex.conds)+length(exptDat2.ex.conds)+length(exptDat3.ex.conds),2);
     origY = nan((1+max(exptDat1.ex.trialdur))*sample_rate,exptDat1.ex.repsPerRun, length(exptDat1.ex.conds)+length(exptDat2.ex.conds)+length(exptDat3.ex.conds),2);
-
+    filtX = nan((1+max(exptDat1.ex.trialdur))*sample_rate,exptDat1.ex.repsPerRun, length(exptDat1.ex.conds)+length(exptDat2.ex.conds)+length(exptDat3.ex.conds),2);
+    filtY = nan((1+max(exptDat1.ex.trialdur))*sample_rate,exptDat1.ex.repsPerRun, length(exptDat1.ex.conds)+length(exptDat2.ex.conds)+length(exptDat3.ex.conds),2);
     acqonsetIdx = edfDat.Events.Messages.time(strcmp(edfDat.Events.Messages.info, 'STIM_ONSET')).*2  - eyeLink_acq_on_diff(3);%
 
     %-------- detect any offset between Eyelink and adjusted EOG data ----
@@ -492,6 +517,21 @@ for i =1:length(names)
             origX(1:length(xtrL),n,c,1) = xtrL;
             origX(1:length(xtrR),n,c,2) = xtrR;
 
+            filt_xtrL = upsampled_filt_eog_L(trstart(1):trend(1)); 
+            filt_xtrR = upsampled_filt_eog_R(trstart(1):trend(1));
+
+            filtX(1:length(xtrL),n,c,1) = filt_xtrL;
+            filtX(1:length(xtrR),n,c,2) = filt_xtrR;
+
+            % figure();
+            % subplot(4,1,1)
+            % plot(xtrL)
+            % subplot(4,1,2)
+            % plot(xtrR)
+            % subplot(4,1,3)
+            % plot(filt_xtrL)
+            % subplot(4,1,4)
+            % plot(filt_xtrR)
 
             % % %trial plot (would still need to rescale the EOG signal
             % between -20 and 20 deg)
@@ -531,11 +571,12 @@ for i =1:length(names)
         
     end
     data.(subj).eog_xpos = origX;
+    data.(subj).eog_filt_xpos = filtX;
     data.(subj).driftingSpeeds = driftingSpeeds;
 
     %% Save data
 
-    save(strcat(folderDir, sprintf('%s_model_data_audio_visual_motion_v%s', name, version)), 'data')
+    save(strcat(folderDir, sprintf('%s_model_data_filt_audio_visual_motion_v%s', name, version)), 'data')
 
 end
 
