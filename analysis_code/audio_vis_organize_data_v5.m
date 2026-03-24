@@ -5,7 +5,7 @@
 %% Load Eyelink EDF data, store blink free data in structure organized by participant, condition, trial, along with blink info
 sample_rate = 2000;
 version = '05';
-names = {'sub-08'};
+names = {'sub-04'};
 
 for i =1:length(names)
     name = names{i};
