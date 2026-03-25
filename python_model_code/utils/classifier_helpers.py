@@ -24,8 +24,10 @@ def get_network_output(model, dataset, batch_size=32):
     all_targets_speed = []
 
     with torch.no_grad():
-        for X, mask, y_dir, y_speed in loader:
-            pred_dir, pred_speed = model(X)
+        for X, x_mask, y_dir, y_speed in loader:
+            X = X * x_mask
+            pred_dir, pred_speed = model(X, x_mask)
+            # pred_dir, pred_speed = model(X)
 
             all_dir.append(pred_dir.cpu())
             all_speed.append(pred_speed.cpu())
