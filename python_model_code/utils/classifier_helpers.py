@@ -50,6 +50,23 @@ def get_speed_performance(pred_speed, y_speed):
     rmse = np.sqrt(np.mean((pred_speed.squeeze() - y_speed)**2))
     return rmse
 
+def get_speed_performance_per_condition(pred_speed, y_speed):
+    pred_speed = pred_speed.squeeze()
+
+    unique_speeds = np.unique(y_speed)
+    rmse_per_speed = {}
+
+    for s in unique_speeds:
+        idx = y_speed == s
+
+        if np.sum(idx) == 0:
+            continue
+
+        rmse = np.sqrt(np.mean((pred_speed[idx] - y_speed[idx])**2))
+        rmse_per_speed[s] = rmse
+
+    return rmse_per_speed
+
 def get_network_cat_performance(pred_out, targets, n_classes):
     pred_labels = np.argmax(pred_out, axis=1)
 

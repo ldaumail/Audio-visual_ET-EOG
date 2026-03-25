@@ -7,7 +7,7 @@ import sys
 
 current_dir = op.dirname(op.abspath(__file__))
 sys.path.append(current_dir)
-from utils.classifier_helpers import get_network_output, get_network_cat_performance, get_direction_performance, get_speed_performance
+from utils.classifier_helpers import get_network_output, get_network_cat_performance, get_direction_performance, get_speed_performance, get_speed_performance_per_condition
 
 #-----------------------------------------------
 # 1: Load data and generate the Pytorch dataset
@@ -247,26 +247,28 @@ all_subjects = np.concatenate(all_subjects, axis=0)
 
 crossvalit_alldir_perfs = np.zeros([6,5]) #6 folds since 6 participants, repeat 5 times
 crossvalit_allspeed_perfs = np.zeros([6,5])
-crossvalit_dir_perfs = np.zeros([5,6,2]) #direction perf
-crossvalit_speed_perfs = np.zeros([5,6,16]) #speed perf
+crossvalit_dir_perfs = np.zeros([6,2,5]) #direction perf
+crossvalit_speed_perfs = np.zeros([6,16,5]) #speed perf
 #preallocate mean performance and mean category performances of each crossvalidation iteration 
-crossvalit_mean_alldir_perfs = np.zeros([5,])
-crossvalit_mean_allspeed_perfs = np.zeros([5,])
-crossvalit_mean_dir_perfs = np.zeros([5,2])
-crossvalit_mean_speed_perfs = np.zeros([5,16])
+# crossvalit_mean_alldir_perfs = np.zeros([5,])
+# crossvalit_mean_allspeed_perfs = np.zeros([5,])
+# crossvalit_mean_dir_perfs = np.zeros([5,2])
+# crossvalit_mean_speed_perfs = np.zeros([5,16])
 #preallocate standard deviation of performance and standard deviations of category performances of each crossvalidation iteration 
-crossvalit_std_alldir_perfs = np.zeros([5,])
-crossvalit_std_allspeed_perfs = np.zeros([5,])
-crossvalit_std_dir_perfs = np.zeros([5,2])
-crossvalit_std_speed_perfs = np.zeros([5,16])
+# crossvalit_std_alldir_perfs = np.zeros([5,])
+# crossvalit_std_allspeed_perfs = np.zeros([5,])
+# crossvalit_std_dir_perfs = np.zeros([5,2])
+# crossvalit_std_speed_perfs = np.zeros([5,16])
 #preallocate the training accuracy for each fold in every crossvalidation
 alldir_training_accuracy = np.zeros([6,5])
 allspeed_training_accuracy = np.zeros([6,5])
 
+training_loss = np.zeros([6,5])
+
 run_nb = 0
 
 for it in range(5):
-    for test_participant in participants:
+    for t, test_participant in enumerate(participants):
 
         print(f"\n=== Testing on {test_participant} ===")
 
@@ -297,16 +299,18 @@ for it in range(5):
 
         # 🔹 category performance
         perf_cat_dir = get_network_cat_performance(pred_dir, y_dir, n_classes=2)
-
+        perf_cat_speed = get_speed_performance_per_condition(pred_speed, y_speed)
         # 🔹 store
-        crossvalit_alldir_perfs[run_nb, it] = perf_dir
-        crossvalit_allspeed_perfs[run_nb, it] = perf_speed
-        crossvalit_dir_perfs[it, run_nb, :] = perf_cat_dir
+        crossvalit_alldir_perfs[t, it] = perf_dir
+        crossvalit_allspeed_perfs[t, it] = perf_speed #total rmse
+        crossvalit_dir_perfs[t, :, it] = perf_cat_dir
+        crossvalit_speed_perfs[t, :, it] = perf_cat_speed #rmse per speed
 
         # 🔹 training accuracy (last epoch)
-        alldir_training_accuracy[run_nb, it] = history["train_acc"][-1]
+        alldir_training_accuracy[t, it] = history["train_acc"][-1]
+        training_loss[t, it] = history["train_loss"][-1]
 
-        run_nb += 1
+        # run_nb += 1
 
 
 
