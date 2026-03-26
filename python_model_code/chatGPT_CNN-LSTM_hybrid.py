@@ -1,5 +1,4 @@
 import numpy as np
-import scipy.io as sio
 import torch
 from torch.utils.data import Dataset
 import os.path as op
@@ -7,80 +6,13 @@ import sys
 
 current_dir = op.dirname(op.abspath(__file__))
 sys.path.append(current_dir)
-from utils.classifier_helpers import get_network_output, get_network_cat_performance, get_direction_performance, get_speed_performance, get_speed_performance_per_condition
+# from utils.classifier_helpers import get_network_output, get_network_cat_performance, get_direction_performance, get_speed_performance, get_speed_performance_per_condition
+import utils.classifier_helpers as ch
 
-#-----------------------------------------------
-# 1: Load data and generate the Pytorch dataset
-#-----------------------------------------------
-def load_mat_data(filepath):
 
-    data = sio.loadmat(filepath)
-
-    eog = data['data'][0, 0]['sub01'][0, 0]['eog_filt_xpos'][:,:,8:10,:]
-    blink = data['data'][0, 0]['sub01'][0, 0]['blinkTrs'][:,:,4:6,:]
-    saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][:,:,4:6,:]
-    pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][:,:,4:6,:]
-
-    conditions = data['data'][0,0]['eyelink_conds'][0][4:6]
-    speed = data['data'][0, 0]['sub01'][0, 0]['driftingSpeeds'][:,8:10]
-
-    # -------------------------
-    # Clean direction labels
-    # -------------------------
-    dir_labels = []
-    for item in conditions:
-        string_val = str(item[0])
-        if 'Leftward' in string_val:
-            dir_labels.append(0)
-        elif 'Rightward' in string_val:
-            dir_labels.append(1)
-
-    dir_labels = np.array(dir_labels)  # (n_conditions,)
-
-    # -------------------------
-    # Get dimensions
-    # -------------------------
-    T, n_trials, n_cond, n_ch = eog.shape
-
-    # -------------------------
-    # Reshape into trials
-    # -------------------------
-    X_list = []
-    y_dir = []
-    y_speed = []
-
-    for c in range(n_cond):
-        for t in range(n_trials):
-
-            # EOG → (channels, time)
-            eog_trial = eog[:, t, c, :].T
-
-            blink_trial = blink[:, t, c, :].T
-            sacc_trial = saccade[:, t, c, :].T
-            pursuit_trial = pursuit[:, t, c, :].T
-
-            # Concatenate channels
-            trial = np.concatenate([
-                eog_trial,
-                blink_trial,
-                sacc_trial,
-                pursuit_trial
-            ], axis=0)  # (channels_total (n_variables*n_eyes), time)
-
-            X_list.append(trial)
-
-            y_dir.append(dir_labels[c])
-            y_speed.append(speed[t, c])
-
-    X = np.array(X_list)          # (N_trials, channels, time)
-    x_mask = ~np.isnan(X)   # True where data exists
-    X = np.nan_to_num(X, nan=0.0)
-    y_dir = np.array(y_dir)
-    y_speed = np.array(y_speed)
-
-    return X, x_mask, y_dir, y_speed
-
-#Dataset
+#-----------------------------
+# 1: Generate Pythorch Dataset
+#-----------------------------
 class EOGDataset(Dataset):
     def __init__(self, X, x_mask, y_dir, y_speed):
         # X = X_train
@@ -97,7 +29,39 @@ class EOGDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx],  self.x_mask[idx], self.y_dir[idx], self.y_speed[idx]
+        # idx =0
+        # X = X[idx]
+        # mask = x_mask[idx]
+        X = self.X[idx]
+        mask = self.x_mask[idx]
+
+        # 🔥 apply mask
+        X = X * mask
+
+        # assuming channel order:
+        # [EOG (2 eyes), blink (2), saccade (2), pursuit (2)]
+        eog = X[:2]
+        eog_mask = mask[:2]
+
+        # masked mean/std for EOG only
+        mean = (eog.sum(dim=1, keepdim=True) /
+                (eog_mask.sum(dim=1, keepdim=True) + 1e-8))
+
+        var = ((eog - mean)**2 * eog_mask).sum(dim=1, keepdim=True) / \
+            (eog_mask.sum(dim=1, keepdim=True) + 1e-8)
+
+        std = torch.sqrt(var + 1e-8)
+
+        eog = (eog - mean) / std
+
+        # put back
+        X[:2] = eog
+
+        return X, mask, self.y_dir[idx], self.y_speed[idx]
+
+
+    # def __getitem__(self, idx):
+    #     return self.X[idx],  self.x_mask[idx], self.y_dir[idx], self.y_speed[idx]
     
 #----------------------    
 # 2: Model design
@@ -105,56 +69,123 @@ class EOGDataset(Dataset):
 import torch.nn as nn
 import torch.nn.functional as F
 
+# class EOGNet(nn.Module):
+#     def __init__(self, n_channels):
+#         super().__init__()
+#         #n_channels =train_dataset.X.shape[1]
+#         #self = EOGNet(n_channels=8)
+#         #x_mask =  mask_train 
+#         #x = X
+#         # ---- CNN layers ----
+#         self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, padding=50)
+#         self.conv2 = nn.Conv1d(32, 64, kernel_size=51, padding=25)
+
+#         # self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, stride=2, padding=50) #add stride = remove pooling layer
+#         # self.conv2 = nn.Conv1d(32, 64, kernel_size=51, stride=2, padding=25)
+#         self.pool = nn.MaxPool1d(2)
+
+#         # ---- LSTM ----
+#         self.lstm = nn.LSTM(64, 64, batch_first=True)
+
+#         # ---- Heads ----
+#         self.fc_dir = nn.Linear(64, 2)   # left vs right
+#         self.fc_speed = nn.Linear(64, 1)
+
+#     def forward(self, x, x_mask):
+#         x_mask = x_mask.any(dim=1, keepdim=True).float() #add a dimension for the channels dimension of x
+#         # x: (batch, channels, time)
+#         x = F.relu(self.conv1(x))
+#         x = self.pool(x)
+#         x_mask = self.pool(x_mask)
+#         # print("X After pooling:", x.shape)
+
+#         x = F.relu(self.conv2(x))
+#         x = self.pool(x)
+#         x_mask = self.pool(x_mask)
+
+#         # reshape for LSTM: (batch, time, features)
+#         x = x.permute(0, 2, 1)   # (B, T, F) B = batch, T = time, F = features
+#         x, _ = self.lstm(x)
+#         # print("X After LSTM:", x.shape)
+
+#         # 🔥 masked temporal pooling → ONE vector per trial
+#         x_mask = x_mask.squeeze(1).unsqueeze(-1) # (B, T) ; then # (B, T, 1)
+#         # print("X mask After Pooling:", x_mask.shape)
+#         x = (x * x_mask).sum(dim=1) / (x_mask.sum(dim=1) + 1e-8)
+
+#         dir_out = self.fc_dir(x)      # (B, 2)
+#         # print("Final dir_out:", dir_out.shape)
+#         speed_out = self.fc_speed(x)  # (B, 1)
+
+#         return dir_out, speed_out
+
 class EOGNet(nn.Module):
     def __init__(self, n_channels):
         super().__init__()
-        #n_channels =train_dataset.X.shape[1]
-        #self = EOGNet(n_channels=8)
-        #x_mask =  mask_train 
-        #x = X
-        # ---- CNN layers ----
+
         self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, padding=50)
         self.conv2 = nn.Conv1d(32, 64, kernel_size=51, padding=25)
-
-        # self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, stride=2, padding=50) #add stride = remove pooling layer
-        # self.conv2 = nn.Conv1d(32, 64, kernel_size=51, stride=2, padding=25)
         self.pool = nn.MaxPool1d(2)
 
-        # ---- LSTM ----
         self.lstm = nn.LSTM(64, 64, batch_first=True)
 
-        # ---- Heads ----
-        self.fc_dir = nn.Linear(64, 2)   # left vs right
+        # 🔥 NEW: combine temporal features
+        self.fc = nn.Linear(64 * 3, 64)
+
+        self.fc_dir = nn.Linear(64, 2)
         self.fc_speed = nn.Linear(64, 1)
 
     def forward(self, x, x_mask):
-        x_mask = x_mask.any(dim=1, keepdim=True).float() #add a dimension for the channels dimension of x
+
+        x_mask = x_mask.any(dim=1, keepdim=True).float()
+        
         # x: (batch, channels, time)
+        # CNN
         x = F.relu(self.conv1(x))
         x = self.pool(x)
         x_mask = self.pool(x_mask)
-        # print("X After pooling:", x.shape)
 
         x = F.relu(self.conv2(x))
         x = self.pool(x)
         x_mask = self.pool(x_mask)
 
-        # reshape for LSTM: (batch, time, features)
-        x = x.permute(0, 2, 1)   # (B, T, F) B = batch, T = time, F = features
+        # (B, T, F)
+        x = x.permute(0, 2, 1)
         x, _ = self.lstm(x)
-        # print("X After LSTM:", x.shape)
 
-        # 🔥 masked temporal pooling → ONE vector per trial
-        x_mask = x_mask.squeeze(1).unsqueeze(-1) # (B, T) ; then # (B, T, 1)
-        # print("X mask After Pooling:", x_mask.shape)
-        x = (x * x_mask).sum(dim=1) / (x_mask.sum(dim=1) + 1e-8)
+        # -------------------------------
+        # 🔥 KEY: temporal feature extraction
+        # -------------------------------
 
-        dir_out = self.fc_dir(x)      # (B, 2)
-        # print("Final dir_out:", dir_out.shape)
-        speed_out = self.fc_speed(x)  # (B, 1)
+        mask = x_mask.squeeze(1)  # (B, T)
+
+        # first valid timestep (since mask is binary, the first 1 encountered)
+        first_idx = mask.argmax(dim=1) 
+
+        # last valid timestep
+        last_idx = mask.shape[1] - 1 - torch.flip(mask, dims=[1]).argmax(dim=1)
+
+        B = x.shape[0]
+
+        first_feat = x[torch.arange(B), first_idx]
+        last_feat  = x[torch.arange(B), last_idx]
+
+        # 🔥 displacement (direction signal)
+        delta_feat = last_feat - first_feat
+
+        # 🔥 average (global context)
+        mask = mask.unsqueeze(-1)
+        avg_feat = (x * mask).sum(dim=1) / (mask.sum(dim=1) + 1e-8)
+
+        # 🔥 combine all
+        feat = torch.cat([avg_feat, delta_feat, last_feat], dim=1)
+
+        feat = F.relu(self.fc(feat))
+
+        dir_out = self.fc_dir(feat)
+        speed_out = self.fc_speed(feat)
 
         return dir_out, speed_out
-
 #--------------------------------------------
 # Model Training
 #--------------------------------------------
@@ -202,10 +233,10 @@ def train_model(dataset):
             all_preds.append(pred_dir.detach())
             all_targets.append(y_dir)
 
-        all_preds = torch.cat(all_preds).numpy()
-        all_targets = torch.cat(all_targets).numpy()
+        all_preds = torch.cat(all_preds).cpu().numpy()
+        all_targets = torch.cat(all_targets).cpu().numpy()
 
-        epoch_acc = get_direction_performance(all_preds, all_targets)
+        epoch_acc = ch.get_direction_performance(all_preds, all_targets)
 
         history["train_acc"].append(epoch_acc)
         history["train_loss"].append(total_loss)
@@ -227,7 +258,7 @@ all_y_speed = []
 all_subjects = []
 for participant in participants:
     filepath = op.join(data_dir, f"{participant}_v05", f"{participant}_model_data_filt_audio_visual_motion_v05.mat")
-    X, x_mask, y_dir, y_speed = load_mat_data(filepath)
+    X, x_mask, y_dir, y_speed = ch.load_mat_data(filepath)
 
     all_X.append(X)
     all_mask.append(x_mask)
@@ -291,15 +322,15 @@ for it in range(5):
         model, history = train_model(train_dataset)
 
         # 🔹 predictions
-        pred_dir, pred_speed, y_dir, y_speed = get_network_output(model, test_dataset)
+        pred_dir, pred_speed, y_dir, y_speed = ch.get_network_output(model, test_dataset)
 
         # 🔹 overall performance
-        perf_dir = get_direction_performance(pred_dir, y_dir)
-        perf_speed = get_speed_performance(pred_speed, y_speed)
+        perf_dir = ch.get_direction_performance(pred_dir, y_dir)
+        perf_speed = ch.get_speed_performance(pred_speed, y_speed)
 
         # 🔹 category performance
-        perf_cat_dir = get_network_cat_performance(pred_dir, y_dir, n_classes=2)
-        perf_cat_speed = get_speed_performance_per_condition(pred_speed, y_speed)
+        perf_cat_dir = ch.get_network_cat_performance(pred_dir, y_dir, n_classes=2)
+        perf_cat_speed = ch.get_speed_performance_per_condition(pred_speed, y_speed)
         # 🔹 store
         crossvalit_alldir_perfs[t, it] = perf_dir
         crossvalit_allspeed_perfs[t, it] = perf_speed #total rmse
