@@ -69,55 +69,6 @@ class EOGDataset(Dataset):
 import torch.nn as nn
 import torch.nn.functional as F
 
-# class EOGNet(nn.Module):
-#     def __init__(self, n_channels):
-#         super().__init__()
-#         #n_channels =train_dataset.X.shape[1]
-#         #self = EOGNet(n_channels=8)
-#         #x_mask =  mask_train 
-#         #x = X
-#         # ---- CNN layers ----
-#         self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, padding=50)
-#         self.conv2 = nn.Conv1d(32, 64, kernel_size=51, padding=25)
-
-#         # self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, stride=2, padding=50) #add stride = remove pooling layer
-#         # self.conv2 = nn.Conv1d(32, 64, kernel_size=51, stride=2, padding=25)
-#         self.pool = nn.MaxPool1d(2)
-
-#         # ---- LSTM ----
-#         self.lstm = nn.LSTM(64, 64, batch_first=True)
-
-#         # ---- Heads ----
-#         self.fc_dir = nn.Linear(64, 2)   # left vs right
-#         self.fc_speed = nn.Linear(64, 1)
-
-#     def forward(self, x, x_mask):
-#         x_mask = x_mask.any(dim=1, keepdim=True).float() #add a dimension for the channels dimension of x
-#         # x: (batch, channels, time)
-#         x = F.relu(self.conv1(x))
-#         x = self.pool(x)
-#         x_mask = self.pool(x_mask)
-#         # print("X After pooling:", x.shape)
-
-#         x = F.relu(self.conv2(x))
-#         x = self.pool(x)
-#         x_mask = self.pool(x_mask)
-
-#         # reshape for LSTM: (batch, time, features)
-#         x = x.permute(0, 2, 1)   # (B, T, F) B = batch, T = time, F = features
-#         x, _ = self.lstm(x)
-#         # print("X After LSTM:", x.shape)
-
-#         # 🔥 masked temporal pooling → ONE vector per trial
-#         x_mask = x_mask.squeeze(1).unsqueeze(-1) # (B, T) ; then # (B, T, 1)
-#         # print("X mask After Pooling:", x_mask.shape)
-#         x = (x * x_mask).sum(dim=1) / (x_mask.sum(dim=1) + 1e-8)
-
-#         dir_out = self.fc_dir(x)      # (B, 2)
-#         # print("Final dir_out:", dir_out.shape)
-#         speed_out = self.fc_speed(x)  # (B, 1)
-
-#         return dir_out, speed_out
 
 class EOGNet(nn.Module):
     def __init__(self, n_channels):
@@ -342,20 +293,204 @@ for it in range(5):
         training_loss[t, it] = history["train_loss"][-1]
 
         # run_nb += 1
+#=========
+#Plots
+#=========
+n_participants = 6
+colors = plt.cm.tab10(np.linspace(0, 1, n_participants))
+
+# mapping: participant → color
+participant_colors = {i: colors[i] for i in range(n_participants)}
+#=========
+#Plot Direction Performance
+#=========
+
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
+
+def plotperf(crossvalit_perfs):
+    """
+    crossvalit_perfs shape: (n_subjects, n_crossval)
+    e.g. (6, 5)
+    """
+
+    data = [crossvalit_perfs[:, i] for i in range(crossvalit_perfs.shape[1])]
+    pos = np.arange(1, len(data) + 1)
+
+    fig = plt.figure()
+
+    # --- Violin plot ---
+    plt.violinplot(
+        data,
+        pos,
+        points=300,
+        widths=0.3,
+        showmeans=True,
+        showextrema=True,
+        showmedians=False
+    )
+
+    # --- Scatter (raster) points ---
+    for i, p in enumerate(pos):
+        for s in range(crossvalit_perfs.shape[0]):
+            y = crossvalit_perfs[s, i]
+            x = np.random.normal(p, 0.03)
+            plt.scatter(x, y, alpha=0.7, color=participant_colors[s])
+
+    # --- Connect same subject across CV ---
+    n_subjects = crossvalit_perfs.shape[0]
+
+    for s in range(n_subjects):
+        y = crossvalit_perfs[s, :]
+        plt.plot(pos, y, alpha=0.7, color=participant_colors[s])
+
+    # --- Labels ---
+    plt.title('Distribution of direction performances for every cross-validation')
+    plt.xlabel('Cross-validation number')
+    plt.ylabel('Performance')
+    plt.ylim((0, 1))
 
 
+    os.makedirs(save_path, exist_ok=True)
+    plt.savefig(op.join(save_path, "direction_prediction_performance_eog.png"), dpi=300, bbox_inches='tight')
+
+    plt.show()
+
+# using fnc for class
+plotperf(crossvalit_alldir_perfs)
+
+#============
+#Plot speed rmse
+#============
+
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
+
+def plotperf(crossvalit_perfs):
+    """
+    crossvalit_perfs shape: (n_subjects, n_crossval)
+    e.g. (6, 5)
+    """
+
+    data = [crossvalit_perfs[:, i] for i in range(crossvalit_perfs.shape[1])]
+    pos = np.arange(1, len(data) + 1)
+
+    fig = plt.figure()
+
+    # --- Violin plot ---
+    plt.violinplot(
+        data,
+        pos,
+        points=300,
+        widths=0.3,
+        showmeans=True,
+        showextrema=True,
+        showmedians=False
+    )
+
+    # --- Scatter (raster) points ---
+    for i, p in enumerate(pos):
+        for s in range(crossvalit_perfs.shape[0]):
+            y = crossvalit_perfs[s, i]
+            x = np.random.normal(p, 0.03)
+            plt.scatter(x, y, alpha=0.7, color=participant_colors[s])
+
+    # --- Connect same subject across CV ---
+    n_subjects = crossvalit_perfs.shape[0]
+
+    for s in range(n_subjects):
+        y = crossvalit_perfs[s, :]
+        plt.plot(pos, y, alpha=0.7, color=participant_colors[s])
+
+    # --- Labels ---
+    plt.title('Distribution of speed RMSE for every cross-validation')
+    plt.xlabel('Cross-validation number')
+    plt.ylabel('RMSE')
+    plt.ylim((0, 1.5))
 
 
+    os.makedirs(save_path, exist_ok=True)
+    plt.savefig(op.join(save_path, "speed_prediction_rmse_eog.png"), dpi=300, bbox_inches='tight')
 
-test_loader = DataLoader(test_dataset, batch_size=32)
+    plt.show()
 
-model.eval()
-all_preds = []
-all_targets = []
+# using fnc for class
+plotperf(crossvalit_allspeed_perfs)
 
-with torch.no_grad():
-    for X, mask, y_dir, y_speed in test_loader:
-        pred_dir, pred_speed = model(X)
+# ==================
+#Plot RMSE per speed across corss-validations
+# ================== 
 
-        all_preds.append(pred_dir.argmax(dim=1))
-        all_targets.append(y_dir)
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plotseabperf(crossvalit_perfs):
+    # shape: (participants, speeds, crossval)
+
+    n_participants, n_speeds, n_cv = crossvalit_perfs.shape
+
+    # -------------------------
+    # 🔥 Average over cross-validation
+    # -------------------------
+    mean_perfs = np.nanmean(crossvalit_perfs, axis=2)  # (6, 16)
+
+    # -------------------------
+    # 🔥 Build dataframe
+    # -------------------------
+    participants = np.repeat(np.arange(n_participants), n_speeds)
+    # np.unique(y_speed)
+    speeds = np.tile(np.arange(n_speeds)+5, n_participants)
+
+    df = pd.DataFrame({
+        "participant": participants,
+        "speed": speeds,
+        "RMSE": mean_perfs.reshape(-1)
+    })
+
+    # -------------------------
+    # 🔥 Plot
+    # -------------------------
+    plt.figure()
+    order = np.sort(df["speed"].unique())
+    speed_to_idx = {s: i for i, s in enumerate(order)}
+    # violin (distribution across participants)
+    sns.violinplot(x="speed", y="RMSE", data=df,order=order)
+
+    # 🔥 add dots (each = participant)
+    sns.stripplot(x="speed", y="RMSE", data=df, order=order,jitter=True, size=5)
+
+    # 🔥 connect same participant across speeds
+    for p in range(n_participants):
+        sub = df[df["participant"] == p]
+        x_vals = [speed_to_idx[s] for s in sub["speed"]]
+        plt.plot(x_vals, sub["RMSE"], alpha=0.7, color=participant_colors[p])
+
+    plt.title('RMSE per speed (averaged across CV)')
+    plt.xlabel('Speed (deg/sec)')
+    plt.ylabel('RMSE')
+    os.makedirs(save_path, exist_ok=True)
+    plt.savefig(op.join(save_path, "speed_specific_prediction_rmse_eog.png"), dpi=300, bbox_inches='tight')
+
+    plt.show()
+
+# using fnc for class
+plotseabperf(crossvalit_speed_perfs)
+
+# test_loader = DataLoader(test_dataset, batch_size=32)
+
+# model.eval()
+# all_preds = []
+# all_targets = []
+
+# with torch.no_grad():
+#     for X, mask, y_dir, y_speed in test_loader:
+#         pred_dir, pred_speed = model(X)
+
+#         all_preds.append(pred_dir.argmax(dim=1))
+#         all_targets.append(y_dir)
