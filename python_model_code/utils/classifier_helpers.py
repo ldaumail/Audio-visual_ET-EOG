@@ -18,10 +18,10 @@ def load_mat_data(filepath):
 
     data = sio.loadmat(filepath)
 
-    eog = data['data'][0, 0]['sub01'][0, 0]['eog_filt_xpos'][:,:,8:10,:]
-    blink = data['data'][0, 0]['sub01'][0, 0]['blinkTrs'][:,:,4:6,:]
-    saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][:,:,4:6,:]
-    pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][:,:,4:6,:]
+    eog = data['data'][0, 0]['sub01'][0, 0]['eog_filt_xpos'][::4,:,8:10,:] #Downsample 4 times with ::4
+    blink = data['data'][0, 0]['sub01'][0, 0]['blinkTrs'][::4,:,4:6,:]
+    saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][::4,:,4:6,:]
+    pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][::4,:,4:6,:]
 
     conditions = data['data'][0,0]['eyelink_conds'][0][4:6]
     speed = data['data'][0, 0]['sub01'][0, 0]['driftingSpeeds'][:,8:10]
@@ -150,3 +150,112 @@ def get_network_cat_performance(pred_out, targets, n_classes):
         cat_perf[i] = correct / np.sum(idx)
 
     return cat_perf
+
+
+### Figures
+import numpy as np
+import matplotlib.pyplot as plt
+import os.path as op
+
+
+def plot_eog_traces(
+    X,
+    y_dir,
+    y_speed,
+    subjects,
+    save_path,
+    channel_idx=0,
+    time=None,
+    alpha_trials=0.05,
+    alpha_subject=0.8,
+
+):
+    """
+    Plot EOG traces across trials and subjects.
+
+    Parameters
+    ----------
+    X : array (N_trials, channels, time)
+    y_dir : array (N_trials,) 0=Left, 1=Right
+    y_speed : array (N_trials,)
+    subjects : array (N_trials,)
+    channel_idx : int (which channel to plot)
+    time : array (time axis)
+    """
+
+    directions = {0: "Leftward", 1: "Rightward"}
+    unique_speeds = np.unique(y_speed)
+
+    if time is None:
+        time = np.arange(X.shape[-1])
+
+    fig, axes = plt.subplots(
+        len(unique_speeds),
+        2,
+        figsize=(12, 4 * len(unique_speeds)),
+        sharex=True,
+        sharey=True
+    )
+
+    if len(unique_speeds) == 1:
+        axes = np.array([axes])
+
+    for i, speed in enumerate(unique_speeds):
+        for j, d in enumerate([0, 1]):
+
+            ax = axes[i, j]
+
+            # select trials
+            mask = (y_speed == speed) & (y_dir == d)
+            X_sel = X[mask]
+            subj_sel = subjects[mask]
+
+            if len(X_sel) == 0:
+                continue
+
+            # -------------------------
+            # Plot all trials (light)
+            # -------------------------
+            for trial in X_sel:
+                ax.plot(
+                    time,
+                    trial[channel_idx],
+                    color="gray",
+                    alpha=alpha_trials,
+                    linewidth=0.5
+                )
+
+            # -------------------------
+            # Plot subject averages
+            # -------------------------
+            unique_subjects = np.unique(subj_sel)
+
+            for sub in unique_subjects:
+                sub_mask = subj_sel == sub
+                sub_mean = X_sel[sub_mask].mean(axis=0)
+
+                ax.plot(
+                    time,
+                    sub_mean[channel_idx],
+                    linewidth=2,
+                    alpha=alpha_subject,
+                    label=sub
+                )
+
+            # -------------------------
+            # Titles
+            # -------------------------
+            ax.set_title(f"{directions[d]} | Speed={speed}")
+            ax.set_xlabel("Time")
+            ax.set_ylabel(f"Channel {channel_idx}")
+            ax.set_ylim(-4, 4)
+
+    # cleaner legend (only once)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper right", title="Subjects")
+
+    plt.tight_layout()
+    saveDir = op.join(save_path)
+    os.makedirs(saveDir, exist_ok=True)
+    plt.savefig(op.join(saveDir, "eog_subject_means.png"), dpi=300, bbox_inches='tight')
+    plt.show()

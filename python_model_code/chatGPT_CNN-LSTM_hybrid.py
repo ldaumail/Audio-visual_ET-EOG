@@ -6,7 +6,6 @@ import sys
 
 current_dir = op.dirname(op.abspath(__file__))
 sys.path.append(current_dir)
-# from utils.classifier_helpers import get_network_output, get_network_cat_performance, get_direction_performance, get_speed_performance, get_speed_performance_per_condition
 import utils.classifier_helpers as ch
 
 
@@ -60,9 +59,6 @@ class EOGDataset(Dataset):
         return X, mask, self.y_dir[idx], self.y_speed[idx]
 
 
-    # def __getitem__(self, idx):
-    #     return self.X[idx],  self.x_mask[idx], self.y_dir[idx], self.y_speed[idx]
-    
 #----------------------    
 # 2: Model design
 #----------------------
@@ -74,25 +70,28 @@ class EOGNet(nn.Module):
     def __init__(self, n_channels):
         super().__init__()
 
-        self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=101, padding=50)
-        self.conv2 = nn.Conv1d(32, 64, kernel_size=51, padding=25)
+        self.conv1 = nn.Conv1d(n_channels, 16, kernel_size=101, padding=50)
+        self.conv2 = nn.Conv1d(16, 32, kernel_size=51, padding=25)
         self.pool = nn.MaxPool1d(2)
 
-        self.lstm = nn.LSTM(64, 64, batch_first=True)
+        self.lstm = nn.LSTM(32, 32, batch_first=True)
 
         # 🔥 NEW: combine temporal features
-        self.fc = nn.Linear(64 * 3, 64)
+        self.fc = nn.Linear(32 * 3, 32)
 
-        self.fc_dir = nn.Linear(64, 2)
-        self.fc_speed = nn.Linear(64, 1)
+        self.fc_dir = nn.Linear(32, 2)
+        self.fc_speed = nn.Linear(32, 1)
 
     def forward(self, x, x_mask):
 
         x_mask = x_mask.any(dim=1, keepdim=True).float()
         
         # x: (batch, channels, time)
+        # First: split continous and binary channels
+        x_eog = x[:, :2, :]        # continuous
+        x_evt = x[:, 2:, :]        # binary
         # CNN
-        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv1(x_eog))
         x = self.pool(x)
         x_mask = self.pool(x_mask)
 
@@ -148,7 +147,7 @@ def train_model(dataset):
     #dataset = train_dataset 
     loader = DataLoader(dataset, batch_size=16, shuffle=True) #batch_size = number of trials per batch
 
-    model = EOGNet(n_channels=dataset.X.shape[1])
+    model = EOGNet(n_channels=dataset.X.shape[1]-6)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
     history = {
@@ -225,7 +224,26 @@ all_y_dir = np.concatenate(all_y_dir, axis=0)
 all_y_speed = np.concatenate(all_y_speed, axis=0)
 all_subjects = np.concatenate(all_subjects, axis=0)
 
-#
+#====================================================
+# Check data and conditions
+#====================================================
+
+save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
+
+ch.plot_eog_traces(all_X, all_y_dir, all_y_speed, all_subjects, save_path,
+    channel_idx=0,
+    time=None,
+    alpha_trials=0.4,
+    alpha_subject=0.8
+)
+
+#====================================================
+# Train, and then test the model after each iteration
+#====================================================
+all_pred_speeds = []
+all_true_speeds = []
+all_fold_ids = []
+all_cv_ids = []
 
 crossvalit_alldir_perfs = np.zeros([6,5]) #6 folds since 6 participants, repeat 5 times
 crossvalit_allspeed_perfs = np.zeros([6,5])
@@ -275,6 +293,13 @@ for it in range(5):
         # 🔹 predictions
         pred_dir, pred_speed, y_dir, y_speed = ch.get_network_output(model, test_dataset)
 
+        # 🔹 save predictions
+        all_pred_speeds.append(pred_speed)
+        all_true_speeds.append(y_speed)
+
+        all_fold_ids.append(np.full_like(pred_speed, t))
+        all_cv_ids.append(np.full_like(pred_speed, it))
+
         # 🔹 overall performance
         perf_dir = ch.get_direction_performance(pred_dir, y_dir)
         perf_speed = ch.get_speed_performance(pred_speed, y_speed)
@@ -292,10 +317,18 @@ for it in range(5):
         alldir_training_accuracy[t, it] = history["train_acc"][-1]
         training_loss[t, it] = history["train_loss"][-1]
 
+all_pred_speeds = np.concatenate(all_pred_speeds)
+all_true_speeds = np.concatenate(all_true_speeds)
+all_fold_ids = np.concatenate(all_fold_ids)
+all_cv_ids = np.concatenate(all_cv_ids)
+
         # run_nb += 1
 #=========
 #Plots
 #=========
+import matplotlib.pyplot as plt
+import numpy as np
+
 n_participants = 6
 colors = plt.cm.tab10(np.linspace(0, 1, n_participants))
 
@@ -304,9 +337,6 @@ participant_colors = {i: colors[i] for i in range(n_participants)}
 #=========
 #Plot Direction Performance
 #=========
-
-import numpy as np
-import matplotlib.pyplot as plt
 import os
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 
@@ -354,7 +384,7 @@ def plotperf(crossvalit_perfs):
 
 
     os.makedirs(save_path, exist_ok=True)
-    plt.savefig(op.join(save_path, "direction_prediction_performance_eog.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(op.join(save_path, "direction_prediction_performance_eog_only.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 
@@ -410,11 +440,11 @@ def plotperf(crossvalit_perfs):
     plt.title('Distribution of speed RMSE for every cross-validation')
     plt.xlabel('Cross-validation number')
     plt.ylabel('RMSE')
-    plt.ylim((0, 1.5))
+    plt.ylim((0, 2))
 
 
     os.makedirs(save_path, exist_ok=True)
-    plt.savefig(op.join(save_path, "speed_prediction_rmse_eog.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(op.join(save_path, "speed_prediction_rmse_eog_only.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 
@@ -475,7 +505,7 @@ def plotseabperf(crossvalit_perfs):
     plt.xlabel('Speed (deg/sec)')
     plt.ylabel('RMSE')
     os.makedirs(save_path, exist_ok=True)
-    plt.savefig(op.join(save_path, "speed_specific_prediction_rmse_eog.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(op.join(save_path, "speed_specific_prediction_rmse_eog_only.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 
