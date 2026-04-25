@@ -18,12 +18,12 @@ def load_mat_data(filepath):
 
     data = sio.loadmat(filepath)
 
-    eog = data['data'][0, 0]['sub01'][0, 0]['eog_filt_xpos'][::4,:,8:10,:] #Downsample 4 times with ::4
-    blink = data['data'][0, 0]['sub01'][0, 0]['blinkTrs'][::4,:,4:6,:]
-    saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][::4,:,4:6,:]
-    pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][::4,:,4:6,:]
+    eog = data['data'][0, 0]['sub01'][0, 0]['eog_filt_xpos'][::16,:,8:10,:] #Downsample 16 times with ::4
+    blink = data['data'][0, 0]['sub01'][0, 0]['blinkTrs'][::16,:,4:6,:]
+    saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][::16,:,4:6,:]
+    pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][::16,:,4:6,:]
     
-    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['origx'][::4,:,4:6,:]
+    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['origx'][::16,:,4:6,:]
 
     conditions = data['data'][0,0]['eyelink_conds'][0][4:6]
     speed = data['data'][0, 0]['sub01'][0, 0]['driftingSpeeds'][:,8:10]
@@ -54,13 +54,21 @@ def load_mat_data(filepath):
 
     for c in range(n_cond):
         for t in range(n_trials):
-
+            t_speed = speed[t,c]
+            fix_dur = 1
+            t_dur = 40/t_speed #40/t_speed #40 = target trajectory distance from -20 to 20 deg = 40 deg
+            sample_dur = 2 #sample duration we want to keep for the training, as shorted trial = 2 seconds 
+            fs = 2000/16 #downsampled 16 times from 2000 Hz to 125 Hz
+            t_samples = np.floor(t_dur*fs)
+            samples = sample_dur*fs
             # EOG → (channels, time)
-            eog_trial = eog[:, t, c, :].T
+            sampleStart = int(fix_dur*fs+np.floor((t_samples)/2)-(samples)/2) #take 2 secs at the middle of the trial for each trial
+            sampleEnd = int(fix_dur*fs+np.floor((t_samples)/2)+(samples)/2)
+            eog_trial = eog[sampleStart:sampleEnd, t, c, :].T 
 
-            blink_trial = blink[:, t, c, :].T
-            sacc_trial = saccade[:, t, c, :].T
-            pursuit_trial = pursuit[:, t, c, :].T
+            blink_trial = blink[sampleStart:sampleEnd, t, c, :].T
+            sacc_trial = saccade[sampleStart:sampleEnd, t, c, :].T
+            pursuit_trial = pursuit[sampleStart:sampleEnd, t, c, :].T
 
             # Concatenate channels
             trial = np.concatenate([
@@ -72,7 +80,7 @@ def load_mat_data(filepath):
 
             X_list.append(trial)
 
-            x_pos.append(eyelink_x[:,t, c,:].T)
+            x_pos.append(eyelink_x[sampleStart:sampleEnd,t, c,:].T)
 
     X = np.array(X_list)          # (N_trials, channels, time)
     # X = np.nan_to_num(X, nan=0.0)

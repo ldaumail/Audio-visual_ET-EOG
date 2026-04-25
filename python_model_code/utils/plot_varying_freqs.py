@@ -22,19 +22,6 @@ def downsample(data, factor):
     """Simple decimation (no filtering). Replace with proper filter if needed."""
     return data[::factor]
 
-def plot_signals(eog, eyelink, fs, title=""):
-    """Plot a single trial comparison"""
-    t = np.arange(eog.shape[0]) / fs
-
-    plt.figure(figsize=(10, 4))
-    plt.plot(t, eog[:], label="EOG", alpha=0.7)
-    plt.plot(t, eyelink[:], label="Eyelink", alpha=0.7)
-    plt.title(f"{title} (fs={fs} Hz)")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Position")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
 
 plot_participant = 'sub-07'
 all_data = {}
