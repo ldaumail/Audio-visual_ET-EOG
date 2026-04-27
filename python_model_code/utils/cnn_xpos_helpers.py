@@ -51,6 +51,8 @@ def load_mat_data(filepath):
     # -------------------------
     X_list = []
     x_pos = []
+    x_dir = []
+    x_speed = []
 
     for c in range(n_cond):
         for t in range(n_trials):
@@ -79,64 +81,74 @@ def load_mat_data(filepath):
             ], axis=0)  # (channels_total (n_variables*n_eyes), time)
 
             X_list.append(trial)
-
             x_pos.append(eyelink_x[sampleStart:sampleEnd,t, c,:].T)
+            x_dir.append(dir_labels[c])
+            x_speed.append(speed[t, c])
 
     X = np.array(X_list)          # (N_trials, channels, time)
     # X = np.nan_to_num(X, nan=0.0)
     x_pos = np.array(x_pos)
+    x_dir = np.array(x_dir)
+    x_speed = np.array(x_speed)
 
-    return X, x_pos
+    return X, x_pos, x_dir, x_speed
 
 def get_network_output(model, dataset, batch_size=32):
     loader = DataLoader(dataset, batch_size=batch_size)
     
     model.eval()
     
-    all_dir = []
-    all_speed = []
-    all_targets_dir = []
+    # all_dir = []
+    # all_speed = []
+    # all_targets_dir = []
+    
+    all_pos = []
+    all_targets_pos = []
     all_targets_speed = []
 
     with torch.no_grad():
-        for X, x_mask, y_dir, y_speed in loader:
-            X = X * x_mask
-            pred_dir, pred_speed = model(X, x_mask)
+        for X, x_pos, x_speed in loader:
+            pred_pos = model(X)
             # pred_dir, pred_speed = model(X)
+            
+            all_pos.append(pred_pos.cpu())
+            all_targets_pos.append(x_pos.cpu())
+            # all_dir.append(pred_dir.cpu())
+            # all_speed.append(pred_speed.cpu())
+            # all_targets_dir.append(x_dir.cpu())
+            all_targets_speed.append(x_speed.cpu())
 
-            all_dir.append(pred_dir.cpu())
-            all_speed.append(pred_speed.cpu())
-            all_targets_dir.append(y_dir.cpu())
-            all_targets_speed.append(y_speed.cpu())
+    # pred_dir = torch.cat(all_dir).numpy()
+    # pred_speed = torch.cat(all_speed).numpy()
+    pred_pos = torch.cat(all_pos).numpy()
+    # y_dir = torch.cat(all_targets_dir).numpy()
+    
+    x_pos = torch.cat(all_targets_pos).numpy()
+    x_speed = torch.cat(all_targets_speed).numpy()
 
-    pred_dir = torch.cat(all_dir).numpy()
-    pred_speed = torch.cat(all_speed).numpy()
-    y_dir = torch.cat(all_targets_dir).numpy()
-    y_speed = torch.cat(all_targets_speed).numpy()
-
-    return pred_dir, pred_speed, y_dir, y_speed
+    return pred_pos, x_pos, x_speed
 
 def get_direction_performance(pred_dir, y_dir):
     pred_labels = np.argmax(pred_dir, axis=1)
     acc = np.mean(pred_labels == y_dir)
     return acc
 
-def get_speed_performance(pred_speed, y_speed):
-    rmse = np.sqrt(np.mean((pred_speed.squeeze() - y_speed)**2))
+def get_pos_performance(pred_pos, x_pos):
+    rmse = np.sqrt(np.mean((pred_pos.squeeze() - x_pos)**2))
     return rmse
 
 
-def get_speed_performance_per_condition(pred_speed, y_speed):
-    pred_speed = pred_speed.squeeze()
-    speed_list= np.unique(y_speed)
+def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
+    pred_pos = pred_pos.squeeze()
+    speed_list= np.unique(x_speed)
     rmse_per_speed = np.full(len(speed_list), np.nan)
 
     for i, speed in enumerate(speed_list):
-        idx = y_speed == speed
+        idx = x_speed == speed
 
         if np.sum(idx) > 0:
             rmse_per_speed[i] = np.sqrt(
-                np.mean((pred_speed[idx] - y_speed[idx])**2)
+                np.mean((pred_pos[idx] - x_pos[idx])**2)
             )
 
     return rmse_per_speed
@@ -162,6 +174,7 @@ def get_network_cat_performance(pred_out, targets, n_classes):
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path as op
+import os
 
 
 def plot_eog_traces(
@@ -264,4 +277,85 @@ def plot_eog_traces(
     saveDir = op.join(save_path)
     os.makedirs(saveDir, exist_ok=True)
     plt.savefig(op.join(saveDir, "eog_subject_means.png"), dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+#========================================================================================
+#
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import os.path as op
+
+def plot_pred_vs_true(
+    x_pos,
+    x_pred,
+    subjects=None,
+    save_path=".",
+    channel_idx=0,
+    time=None,
+    max_trials=20,          # avoid plotting hundreds
+):
+    """
+    Plot predicted vs true eye position traces per trial.
+
+    Parameters
+    ----------
+    x_pos : array (N, T) or (N, C, T)
+    x_pred : array (N, T) or (N, C, T)
+    subjects : array (N,) optional
+    channel_idx : which channel to plot if C > 1
+    time : array (T,)
+    """
+
+    # -------------------------
+    # Handle shapes
+    # -------------------------
+    if x_pos.ndim == 3:
+        x_pos = x_pos[:, channel_idx, :]
+        x_pred = x_pred[:, channel_idx, :]
+
+    num_trials = min(x_pos.shape[0], max_trials)
+
+    if time is None:
+        time = np.arange(x_pos.shape[-1])
+
+    # -------------------------
+    # Plot
+    # -------------------------
+    fig, axes = plt.subplots(
+        num_trials, 1,
+        figsize=(10, 2.5 * num_trials),
+        sharex=True
+    )
+
+    if num_trials == 1:
+        axes = [axes]
+
+    for i in range(num_trials):
+
+        ax = axes[i]
+
+        ax.plot(time, x_pos[i], label="True", linewidth=2)
+        ax.plot(time, x_pred[i], label="Pred", linestyle="--")
+
+        if subjects is not None:
+            ax.set_title(f"Trial {i} | Subject: {subjects[i]}")
+        else:
+            ax.set_title(f"Trial {i}")
+
+        ax.set_ylabel("Position")
+
+        if i == 0:
+            ax.legend()
+
+    axes[-1].set_xlabel("Time")
+
+    plt.tight_layout()
+
+    # -------------------------
+    # Save
+    # -------------------------
+    os.makedirs(save_path, exist_ok=True)
+    plt.savefig(op.join(save_path, "pred_vs_true_trials.png"), dpi=300)
     plt.show()
