@@ -150,15 +150,17 @@ all_subjects = np.concatenate(all_subjects, axis=0)
 # Check data and conditions
 #====================================================
 
-# save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
-
-# ch.plot_eog_traces(all_X, all_x_dir,
-#     all_x_speed, all_subjects, save_path,
-#     channel_idx=0,
-#     time=None,
-#     alpha_trials=0.4,
-#     alpha_subject=0.8
-# )
+save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
+save_name = op.join('eyelink_traces.png')
+ch.plot_eog_traces(all_x_pos, all_x_dir,
+    all_x_speed, all_subjects, save_path,
+    save_name,
+    channel_idx=0,
+    ylim = [-20, 20],
+    time=None,
+    alpha_trials=0.4,
+    alpha_subject=0.8
+)
 
 #====================================================
 # Train, and then test the model after each iteration
@@ -275,13 +277,14 @@ all_cv_ids = np.concatenate(all_cv_ids)
 #Plot predicted vs true trial traces
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 ch.plot_pred_vs_true(
-    all_true_pos[:11,:,:],
-    all_pred_pos[:11,:,:],
+    all_true_pos[2500:2510,:,:],
+    all_pred_pos[2500:2510,:,:],
     subjects=None,
     save_path= save_path,
     channel_idx=0,
     time=None,
-    max_trials=20,          # avoid plotting hundreds
+    max_trials=20          # avoid plotting hundreds
+
 )
 
 

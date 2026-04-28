@@ -23,7 +23,7 @@ def load_mat_data(filepath):
     saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][::16,:,4:6,:]
     pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][::16,:,4:6,:]
     
-    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['origx'][::16,:,4:6,:]
+    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['blinkFreeX'][::16,:,4:6,:]
 
     conditions = data['data'][0,0]['eyelink_conds'][0][4:6]
     speed = data['data'][0, 0]['sub01'][0, 0]['driftingSpeeds'][:,8:10]
@@ -183,11 +183,12 @@ def plot_eog_traces(
     y_speed,
     subjects,
     save_path,
+    save_name,
+    ylim,
     channel_idx=0,
     time=None,
     alpha_trials=0.05,
     alpha_subject=0.8,
-
 ):
     """
     Plot EOG traces across trials and subjects.
@@ -267,7 +268,7 @@ def plot_eog_traces(
             ax.set_title(f"{directions[d]} | Speed={speed}")
             ax.set_xlabel("Time")
             ax.set_ylabel(f"Channel {channel_idx}")
-            ax.set_ylim(-4, 4)
+            ax.set_ylim(ylim)
 
     # cleaner legend (only once)
     handles, labels = axes[0, 0].get_legend_handles_labels()
@@ -276,7 +277,7 @@ def plot_eog_traces(
     plt.tight_layout()
     saveDir = op.join(save_path)
     os.makedirs(saveDir, exist_ok=True)
-    plt.savefig(op.join(saveDir, "eog_subject_means.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(op.join(saveDir, save_name), dpi=300, bbox_inches='tight')
     plt.show()
 
 
