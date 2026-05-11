@@ -8,7 +8,6 @@ current_dir = op.dirname(op.abspath(__file__))
 sys.path.append(current_dir)
 import utils.cnn_xpos_helpers as ch
 
-
 #-----------------------------
 # 1: Generate Pytorch Dataset
 #-----------------------------
@@ -102,7 +101,7 @@ def train_model(dataset):
             blink_mask = x_evt[:, 0:2, :] > 0
             valid_mask = ~blink_mask
 
-            loss = ((pred_pos - x_pos)**2)[valid_mask].mean()
+            loss = ((pred_pos - x_pos)**2)[valid_mask].mean() #MSE loss
             # loss = loss_pos_fn(pred_pos, x_pos)
 
             loss.backward() #compute new gradients
@@ -132,8 +131,8 @@ for participant in participants:
     filepath = op.join(data_dir, f"{participant}_v05", f"{participant}_model_data_filt_audio_visual_motion_v05_1.mat")
     X, x_pos, x_dir, x_speed = ch.load_mat_data(filepath)
 
-    all_X.append(X)
-    all_x_pos.append(x_pos)
+    all_X.append(X) #EOG data + event codes of blinks, saccades, pursuits
+    all_x_pos.append(x_pos) #Eyelink eye position data
     all_x_dir.append(x_dir)
     all_x_speed.append(x_speed)
 
@@ -151,12 +150,12 @@ all_subjects = np.concatenate(all_subjects, axis=0)
 #====================================================
 
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
-save_name = op.join('eyelink_traces.png')
-ch.plot_eog_traces(all_x_pos, all_x_dir,
+save_name = op.join('eyelink_traces_noblink.png')
+ch.plot_traces(all_x_pos, all_x_dir,
     all_x_speed, all_subjects, save_path,
     save_name,
     channel_idx=0,
-    ylim = [-20, 20],
+    ylim = [-40, 40],
     time=None,
     alpha_trials=0.4,
     alpha_subject=0.8
@@ -205,30 +204,72 @@ for it in range(5):
 
         X_train = all_X[train_idx]
         x_speed_train = all_x_speed[train_idx]
-        x_pos_train = all_x_pos[train_idx]
+        x_pos_train = all_x_pos[train_idx] #Eyelink Eye position training data
 
         X_test = all_X[test_idx]
         x_speed_test = all_x_speed[test_idx]
-        x_pos_test = all_x_pos[test_idx]
+        x_pos_test = all_x_pos[test_idx] #Eyelink Eye position test data
+
 
         #-----------------------------
         #Mask blinks and normalize
         #-----------------------------
+        #Training data masks
+        #mask 1 = blinks
         x_evt = X_train[:, 2:, :]  # (B, 6, T)
         blink_mask = x_evt[:, 0:2, :] > 0
-        valid_mask = ~blink_mask
+        # valid_train_mask1 = ~blink_mask #keep everything that is not blink
 
-        eog_train = X_train[:, :2, :]
-        eog_mean = eog_train[valid_mask].mean()
-        eog_std  = eog_train[valid_mask].std()
+        #mask 2 = eye position is far away from screen
+        farpos_mask = (x_pos_train < -30) | (x_pos_train > 30)
+        # valid_train_mask2 = ~farpos_mask  #If eye position is far away from screen, remove this part as well
 
-        xpos = x_pos_train
-        xpos_mean = xpos[valid_mask].mean()
-        xpos_std  = xpos[valid_mask].std()
+        #Interpolate masked time series
+        # ---------------------------------------------------
+        # TRAIN
+        # ---------------------------------------------------
 
-        X_train[:, :2, :] = (X_train[:, :2, :] - eog_mean) / (eog_std + 1e-8)
-        X_test[:,  :2, :] = (X_test[:,  :2, :] - eog_mean) / (eog_std + 1e-8)
+        train_mask = blink_mask | farpos_mask
+        X_train_eog = X_train[:, :2, :]
+        X_train_eog[train_mask] = 0
+        x_pos_train[train_mask] = 0
+        # X_train_eog = ch.interpolate_gaps(X_train[:, :2, :],train_mask)
+        # x_pos_train = ch.interpolate_gaps(x_pos_train, train_mask)
 
+        # ch.plot_trial(x_pos_train,trial_idx=2)
+        # ---------------------------------------------------
+        # TEST
+        # ---------------------------------------------------
+        #Test data masks
+        #mask 1 = blinks
+        x_evt = X_test[:, 2:, :]  # (B, 6, T)
+        test_blink_mask = x_evt[:, 0:2, :] > 0
+        # valid_test_mask1 = ~test_blink_mask #keep everything that is not blink
+
+        #mask 2 = eye position is far away from screen
+        test_farpos_mask = (x_pos_test < -30) | (x_pos_test > 30)
+        # valid_test_mask2 = ~test_farpos_mask  #If eye position is far away from screen, remove this part as well
+
+        test_mask = test_blink_mask & test_farpos_mask
+        X_test_eog = X_test[:, :2, :]
+        X_test_eog[test_mask] = 0
+        x_pos_test[test_mask] = 0
+        # X_test_eog = ch.interpolate_gaps(X_test[:, :2, :],test_mask)
+        # x_pos_test = ch.interpolate_gaps(x_pos_test,test_mask)
+
+        # eog_train = X_train[:, :2, :] #EOG data
+        eog_mean = X_train_eog.mean()
+        eog_std  = X_train_eog.std()
+
+        xpos = x_pos_train #Eyelink Eye position training data
+        xpos_mean = xpos.mean()
+        xpos_std  = xpos.std()
+
+        # Normalize EOG data
+        X_train[:, :2, :] = (X_train_eog - eog_mean) / (eog_std + 1e-8) 
+        X_test[:,  :2, :] = (X_test_eog - eog_mean) / (eog_std + 1e-8)
+
+        # Normalize Eyelink data
         x_pos_train = (x_pos_train - xpos_mean) / (xpos_std + 1e-8)
         x_pos_test  = (x_pos_test  - xpos_mean) / (xpos_std + 1e-8)
 
@@ -277,8 +318,8 @@ all_cv_ids = np.concatenate(all_cv_ids)
 #Plot predicted vs true trial traces
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 ch.plot_pred_vs_true(
-    all_true_pos[2500:2510,:,:],
-    all_pred_pos[2500:2510,:,:],
+    all_true_pos[3800:3810,:,:],
+    all_pred_pos[3800:3810,:,:],
     subjects=None,
     save_path= save_path,
     channel_idx=0,

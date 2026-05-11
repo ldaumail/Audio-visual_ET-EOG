@@ -11,8 +11,12 @@ import scipy.io as sio
 #     eval_loss, eval_perf = model.evaluate(test_pats, test_targets)
 #     # returns just the overall performance
 #     return eval_perf
+
+###--------------------------------------------------------------------
+# Data loading and preprocessing
+###--------------------------------------------------------------------
 #-----------------------------------------------
-# 1: Load data and generate the Pytorch dataset
+# Load data and generate the Pytorch dataset
 #-----------------------------------------------
 def load_mat_data(filepath):
 
@@ -23,7 +27,7 @@ def load_mat_data(filepath):
     saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][::16,:,4:6,:]
     pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][::16,:,4:6,:]
     
-    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['blinkFreeX'][::16,:,4:6,:]
+    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['origx'][::16,:,4:6,:] #blinkFreeX
 
     conditions = data['data'][0,0]['eyelink_conds'][0][4:6]
     speed = data['data'][0, 0]['sub01'][0, 0]['driftingSpeeds'][:,8:10]
@@ -59,7 +63,7 @@ def load_mat_data(filepath):
             t_speed = speed[t,c]
             fix_dur = 1
             t_dur = 40/t_speed #40/t_speed #40 = target trajectory distance from -20 to 20 deg = 40 deg
-            sample_dur = 2 #sample duration we want to keep for the training, as shorted trial = 2 seconds 
+            sample_dur = 2 #sample duration we want to keep for the training, as shortest trial = 2 seconds 
             fs = 2000/16 #downsampled 16 times from 2000 Hz to 125 Hz
             t_samples = np.floor(t_dur*fs)
             samples = sample_dur*fs
@@ -92,6 +96,87 @@ def load_mat_data(filepath):
     x_speed = np.array(x_speed)
 
     return X, x_pos, x_dir, x_speed
+
+#-----------------------------------------------
+# Interpolate data when there are blinks or eye position is too far away from the screen
+#-----------------------------------------------
+import numpy as np
+
+def interpolate_gaps(data, mask):
+    #data = x_pos_train.copy()
+    data_interp = data.copy()
+
+    n_trials, n_channels, n_timepoints = data.shape
+
+    for trial in range(n_trials):
+        for ch in range(n_channels):
+
+            m = mask[trial, ch]
+
+            # contiguous regions
+            diff = np.diff(m.astype(int))
+
+            starts = np.where(diff == 1)[0] + 1
+            ends   = np.where(diff == -1)[0]
+
+            if m[0]:
+                starts = np.r_[0, starts]
+
+            if m[-1]:
+                ends = np.r_[ends, n_timepoints - 1]
+
+            for start, end in zip(starts, ends):
+
+                # ------------------------------------------------
+                # Find nearest valid LEFT anchor
+                # ------------------------------------------------
+                left_idx = start - 1
+
+                while left_idx >= 0 and np.isnan(
+                    data_interp[trial, ch, left_idx]
+                ):
+                    left_idx -= 1
+
+                # ------------------------------------------------
+                # Find nearest valid RIGHT anchor
+                # ------------------------------------------------
+                right_idx = end + 1
+
+                while (
+                    right_idx < n_timepoints
+                    and np.isnan(
+                        data_interp[trial, ch, right_idx]
+                    )
+                ):
+                    right_idx += 1
+
+                # skip if no valid anchors
+                if left_idx < 0 or right_idx >= n_timepoints:
+                    continue
+
+                left_val = data_interp[trial, ch, left_idx]
+                right_val = data_interp[trial, ch, right_idx]
+
+                # still skip if anchors invalid
+                if np.isnan(left_val) or np.isnan(right_val):
+                    continue
+
+                # interpolate ONLY inside gap
+                gap_len = end - start + 1
+
+                interp_vals = np.linspace(
+                    left_val,
+                    right_val,
+                    gap_len + 2
+                )[1:-1]
+
+                data_interp[
+                    trial,
+                    ch,
+                    start:end+1
+                ] = interp_vals
+
+    return data_interp
 
 def get_network_output(model, dataset, batch_size=32):
     loader = DataLoader(dataset, batch_size=batch_size)
@@ -177,7 +262,7 @@ import os.path as op
 import os
 
 
-def plot_eog_traces(
+def plot_traces(
     X,
     y_dir,
     y_speed,
@@ -280,7 +365,80 @@ def plot_eog_traces(
     plt.savefig(op.join(saveDir, save_name), dpi=300, bbox_inches='tight')
     plt.show()
 
+#Plot trials data
+import matplotlib.pyplot as plt
+import numpy as np
 
+def plot_trial(
+    data,
+    trial_idx=0,
+    original_data=None,
+    channel_names=("Left eye", "Right eye")
+):
+    """
+    Plot EOG traces for one trial.
+
+    Parameters
+    ----------
+    data : ndarray
+        Shape (n_trials, n_channels, n_timepoints)
+
+    trial_idx : int
+        Trial to plot.
+
+    original_data : ndarray or None
+        Optional original data before interpolation.
+
+    channel_names : tuple
+        Names for channels.
+    """
+
+    n_trials, n_channels, n_timepoints = data.shape
+
+    time = np.arange(n_timepoints)
+
+    fig, axes = plt.subplots(
+        n_channels,
+        1,
+        figsize=(12, 4 * n_channels),
+        sharex=True
+    )
+
+    # if only one channel
+    if n_channels == 1:
+        axes = [axes]
+
+    for ch in range(n_channels):
+
+        # interpolated / cleaned data
+        axes[ch].plot(
+            time,
+            data[trial_idx, ch],
+            linewidth=2,
+            label="Interpolated"
+        )
+
+        # optional original data
+        if original_data is not None:
+            axes[ch].plot(
+                time,
+                original_data[trial_idx, ch],
+                alpha=0.5,
+                linestyle="--",
+                label="Original"
+            )
+
+        axes[ch].set_title(
+            f"Trial {trial_idx} — {channel_names[ch]}"
+        )
+
+        axes[ch].set_ylabel("Amplitude")
+        axes[ch].legend()
+
+    axes[-1].set_xlabel("Timepoints")
+
+    plt.tight_layout()
+    plt.show()
 #========================================================================================
 #
 import numpy as np
