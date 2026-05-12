@@ -250,7 +250,7 @@ for it in range(5):
         test_farpos_mask = (x_pos_test < -30) | (x_pos_test > 30)
         # valid_test_mask2 = ~test_farpos_mask  #If eye position is far away from screen, remove this part as well
 
-        test_mask = test_blink_mask & test_farpos_mask
+        test_mask = test_blink_mask | test_farpos_mask
         X_test_eog = X_test[:, :2, :]
         X_test_eog[test_mask] = 0
         x_pos_test[test_mask] = 0
