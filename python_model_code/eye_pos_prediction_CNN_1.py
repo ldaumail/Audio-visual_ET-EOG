@@ -12,11 +12,12 @@ import utils.cnn_xpos_helpers as ch
 # 1: Generate Pytorch Dataset
 #-----------------------------
 class EOGDataset(Dataset):
-    def __init__(self, X, x_pos, x_speed):
+    def __init__(self, X, x_pos_norm, x_pos, x_speed):
         # X = X_train
         # x_pos = x_pos_train
 
         self.X = torch.tensor(X, dtype=torch.float32)
+        self.x_pos_norm = torch.tensor(x_pos_norm, dtype=torch.float32)
         self.x_pos = torch.tensor(x_pos, dtype=torch.float32)
         self.x_speed = torch.tensor(x_speed, dtype=torch.float32)
 
@@ -24,7 +25,7 @@ class EOGDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.x_pos[idx], self.x_speed[idx]
+        return self.X[idx], self.x_pos_norm[idx], self.x_pos[idx], self.x_speed[idx]
 
 
 #----------------------    
@@ -52,11 +53,9 @@ class EOGNet(nn.Module):
         # conv2 = nn.Conv1d(16, 32, kernel_size=17, padding=8)
         # Split
         x_eog = x[:, :2, :]
-        x_evt = x[:, 2:, :]
-
-        blink_eog   = x_eog * x_evt[:, 0:2, :]
-        sacc_eog    = x_eog * x_evt[:, 2:4, :]
-        pursuit_eog = x_eog * x_evt[:, 4:6, :]
+        blink_eog   = x_eog * x[:, 2:4, :]
+        sacc_eog    = x_eog * x[:, 4:6, :]
+        pursuit_eog = x_eog * x[:, 6:8, :]
 
         # x = torch.cat([blink_eog, sacc_eog, pursuit_eog], dim=1)  # (B, 6, T)
         x = torch.cat([blink_eog, sacc_eog, pursuit_eog], dim=1)  # (B, 6, T)
@@ -92,16 +91,17 @@ def train_model(dataset):
 
     for epoch in range(20):
         total_loss = 0
-        for X, x_pos, x_speed in loader:
+        for X, x_pos_norm, x_pos, x_speed in loader:
             optimizer.zero_grad() # reset gradients at new batch (clear old gradients)
             
             pred_pos = model(X)
 
-            x_evt = X[:, 2:, :]
-            blink_mask = x_evt[:, 0:2, :] > 0
-            valid_mask = ~blink_mask
+            # x_evt = X[:, 2:, :]
+            blink_mask = X[:, 2:4, :] > 0
+            farpos_mask = (x_pos < -30) | (x_pos > 30)
+            valid_mask = ~blink_mask & ~farpos_mask
 
-            loss = ((pred_pos - x_pos)**2)[valid_mask].mean() #MSE loss
+            loss = ((pred_pos - x_pos_norm)**2)[valid_mask].mean() #MSE loss
             # loss = loss_pos_fn(pred_pos, x_pos)
 
             loss.backward() #compute new gradients
@@ -202,37 +202,34 @@ for it in range(5):
         train_idx = all_subjects != test_participant
         test_idx  = all_subjects == test_participant
 
-        X_train = all_X[train_idx]
+        X_train = all_X[train_idx] #EOG data + event codes of blinks, saccades, pursuits for training
         x_speed_train = all_x_speed[train_idx]
         x_pos_train = all_x_pos[train_idx] #Eyelink Eye position training data
 
-        X_test = all_X[test_idx]
+        X_test = all_X[test_idx] #EOG data + event codes of blinks, saccades, pursuits for testing
         x_speed_test = all_x_speed[test_idx]
         x_pos_test = all_x_pos[test_idx] #Eyelink Eye position test data
 
-
+        # ---------------------------------------------------
+        # TRAIN
+        # ---------------------------------------------------
         #-----------------------------
         #Mask blinks and normalize
         #-----------------------------
         #Training data masks
         #mask 1 = blinks
-        x_evt = X_train[:, 2:, :]  # (B, 6, T)
-        blink_mask = x_evt[:, 0:2, :] > 0
+
+        # x_evt = X_train[:, 2:, :]  # (B, 6, T)
+        blink_mask = X_train[:, 2:4, :] > 0
         # valid_train_mask1 = ~blink_mask #keep everything that is not blink
 
         #mask 2 = eye position is far away from screen
         farpos_mask = (x_pos_train < -30) | (x_pos_train > 30)
-        # valid_train_mask2 = ~farpos_mask  #If eye position is far away from screen, remove this part as well
-
-        #Interpolate masked time series
-        # ---------------------------------------------------
-        # TRAIN
-        # ---------------------------------------------------
-
         train_mask = blink_mask | farpos_mask
+
         X_train_eog = X_train[:, :2, :]
-        X_train_eog[train_mask] = 0
-        x_pos_train[train_mask] = 0
+        # X_train_eog[train_mask] = 0
+        # x_pos_train[train_mask] = 0
         # X_train_eog = ch.interpolate_gaps(X_train[:, :2, :],train_mask)
         # x_pos_train = ch.interpolate_gaps(x_pos_train, train_mask)
 
@@ -242,8 +239,8 @@ for it in range(5):
         # ---------------------------------------------------
         #Test data masks
         #mask 1 = blinks
-        x_evt = X_test[:, 2:, :]  # (B, 6, T)
-        test_blink_mask = x_evt[:, 0:2, :] > 0
+        # x_evt = X_test[:, 2:, :]  # (B, 6, T)
+        test_blink_mask = X_test[:, 2:4, :] > 0
         # valid_test_mask1 = ~test_blink_mask #keep everything that is not blink
 
         #mask 2 = eye position is far away from screen
@@ -252,52 +249,53 @@ for it in range(5):
 
         test_mask = test_blink_mask | test_farpos_mask
         X_test_eog = X_test[:, :2, :]
-        X_test_eog[test_mask] = 0
-        x_pos_test[test_mask] = 0
+        # X_test_eog[test_mask] = 0
+        # x_pos_test[test_mask] = 0
         # X_test_eog = ch.interpolate_gaps(X_test[:, :2, :],test_mask)
         # x_pos_test = ch.interpolate_gaps(x_pos_test,test_mask)
 
         # eog_train = X_train[:, :2, :] #EOG data
-        eog_mean = X_train_eog.mean()
-        eog_std  = X_train_eog.std()
+        eog_mean = X_train_eog[~train_mask].mean()
+        eog_std  = X_train_eog[~train_mask].std()
 
-        xpos = x_pos_train #Eyelink Eye position training data
-        xpos_mean = xpos.mean()
-        xpos_std  = xpos.std()
+        #Eyelink Eye position training data
+        xpos_mean = x_pos_train[~train_mask].mean()
+        xpos_std  = x_pos_train[~train_mask].std()
 
         # Normalize EOG data
         X_train[:, :2, :] = (X_train_eog - eog_mean) / (eog_std + 1e-8) 
         X_test[:,  :2, :] = (X_test_eog - eog_mean) / (eog_std + 1e-8)
 
         # Normalize Eyelink data
-        x_pos_train = (x_pos_train - xpos_mean) / (xpos_std + 1e-8)
-        x_pos_test  = (x_pos_test  - xpos_mean) / (xpos_std + 1e-8)
+        x_pos_train_norm = (x_pos_train - xpos_mean) / (xpos_std + 1e-8)
+        x_pos_test_norm  = (x_pos_test  - xpos_mean) / (xpos_std + 1e-8)
 
 
-        train_dataset = EOGDataset(X_train, x_pos_train, x_speed_train)
-        test_dataset  = EOGDataset(X_test,  x_pos_test, x_speed_test)
+        train_dataset = EOGDataset(X_train, x_pos_train_norm,  x_pos_train, x_speed_train)
+        test_dataset  = EOGDataset(X_test,  x_pos_test_norm, x_pos_test, x_speed_test)
 
         model, history = train_model(train_dataset)
 
         # 🔹 predictions
-        pred_pos, x_pos, x_speed = ch.get_network_output(model, test_dataset)
+        pred_pos, x_pos_norm, x_speed = ch.get_network_output(model, test_dataset)
 
         pred_real = pred_pos * xpos_std + xpos_mean
 
         # 🔹 save predictions
         all_pred_pos.append(pred_pos)
-        all_true_pos.append(x_pos)
+        all_true_pos.append(x_pos_norm)
         all_true_speed.append(x_speed)
 
         all_fold_ids.append(np.full_like(pred_pos, t))
         all_cv_ids.append(np.full_like(pred_pos, it))
 
         # 🔹 overall performance
-
-        perf_speed = ch.get_pos_performance(pred_pos, x_pos)
+        pred_pos[test_mask] = np.nan
+        x_pos_norm[test_mask] = np.nan
+        perf_speed = ch.get_pos_performance(pred_pos, x_pos_norm)
 
         # 🔹 category performance
-        perf_cat_speed = ch.get_pos_performance_per_speed(pred_pos, x_pos, x_speed)
+        perf_cat_speed = ch.get_pos_performance_per_speed(pred_pos, x_pos_norm, x_speed)
         # 🔹 store
         crossvalit_allpos_perfs[t, it] = perf_speed #total rmse
         crossvalit_speed_perfs[t, :, it] = perf_cat_speed #rmse per speed
@@ -318,10 +316,11 @@ all_cv_ids = np.concatenate(all_cv_ids)
 #Plot predicted vs true trial traces
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 ch.plot_pred_vs_true(
-    all_true_pos[3800:3810,:,:],
-    all_pred_pos[3800:3810,:,:],
+    all_true_pos[3600:3610,:,:],
+    all_pred_pos[3600:3610,:,:],
     subjects=None,
     save_path= save_path,
+    save_name = "pred_vs_true_trials_validmask.png",
     channel_idx=0,
     time=None,
     max_trials=20          # avoid plotting hundreds
@@ -387,7 +386,7 @@ def plotperf(crossvalit_perfs):
 
 
     os.makedirs(save_path, exist_ok=True)
-    plt.savefig(op.join(save_path, "xpos_prediction_rmse_filt9_norm-eyelink.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(op.join(save_path, "xpos_prediction_rmse_filt9_norm-eyelink_validmask.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 
@@ -429,7 +428,7 @@ def plotseabperf(crossvalit_perfs):
     # -------------------------
     # 🔥 Plot
     # -------------------------
-    plt.figure()
+    fig, axes = plt.subplots()
     order = np.sort(df["speed"].unique())
     speed_to_idx = {s: i for i, s in enumerate(order)}
     # violin (distribution across participants)
@@ -443,12 +442,12 @@ def plotseabperf(crossvalit_perfs):
         sub = df[df["participant"] == p]
         x_vals = [speed_to_idx[s] for s in sub["speed"]]
         plt.plot(x_vals, sub["RMSE"], alpha=0.7, color=participant_colors[p])
-
+    axes.set_ylim((0,1.80))
     plt.title('RMSE per speed (averaged across CV)')
     plt.xlabel('Speed (deg/sec)')
     plt.ylabel('RMSE')
     os.makedirs(save_path, exist_ok=True)
-    plt.savefig(op.join(save_path, "speed_specific_prediction_rmse_filt9_norm-eyelink.png"), dpi=300, bbox_inches='tight')
+    plt.savefig(op.join(save_path, "speed_specific_prediction_rmse_filt9_norm-eyelink_validmask.png"), dpi=300, bbox_inches='tight')
 
     plt.show()
 

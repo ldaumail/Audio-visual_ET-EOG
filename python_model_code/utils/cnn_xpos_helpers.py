@@ -97,9 +97,96 @@ def load_mat_data(filepath):
 
     return X, x_pos, x_dir, x_speed
 
+
+#-----------------------------------------------
+# Load data 1 eye at a time
+#-----------------------------------------------
+def load_mat_data_1eye(filepath):
+    #filepath = op.join(data_dir, f"{participant}_v05", f"{participant}_model_data_filt_audio_visual_motion_v05_1.mat")
+    data = sio.loadmat(filepath)
+
+    eog = data['data'][0, 0]['sub01'][0, 0]['eog_filt_xpos'][::16,:,8:10,:] #Downsample 16 times with ::4
+    blink = data['data'][0, 0]['sub01'][0, 0]['blinkTrs'][::16,:,4:6,:]
+    saccade = data['data'][0, 0]['sub01'][0, 0]['saccadesTrs'][::16,:,4:6,:]
+    pursuit = data['data'][0, 0]['sub01'][0, 0]['pursuitTrs'][::16,:,4:6,:]
+    
+    eyelink_x = data['data'][0, 0]['sub01'][0, 0]['origx'][::16,:,4:6,:] #blinkFreeX
+
+    conditions = data['data'][0,0]['eyelink_conds'][0][4:6]
+    speed = data['data'][0, 0]['sub01'][0, 0]['driftingSpeeds'][:,8:10]
+
+    # -------------------------
+    # Clean direction labels
+    # -------------------------
+    dir_labels = []
+    for item in conditions:
+        string_val = str(item[0])
+        if 'Leftward' in string_val:
+            dir_labels.append(0)
+        elif 'Rightward' in string_val:
+            dir_labels.append(1)
+
+    dir_labels = np.array(dir_labels)  # (n_conditions,)
+
+    # -------------------------
+    # Get dimensions
+    # -------------------------
+    T, n_trials, n_cond, n_ch = eog.shape
+
+    # -------------------------
+    # Reshape into trials
+    # -------------------------
+    X_list = []
+    x_pos = []
+    x_dir = []
+    x_speed = []
+
+    for c in range(n_cond): #motion direction (leftward/rightward)
+        for t in range(n_trials):
+            for e in range(n_ch):
+                t_speed = speed[t,c]
+                fix_dur = 1
+                t_dur = 40/t_speed #40/t_speed #40 = target trajectory distance from -20 to 20 deg = 40 deg
+                sample_dur = 2 #sample duration we want to keep for the training, as shortest trial = 2 seconds 
+                fs = 2000/16 #downsampled 16 times from 2000 Hz to 125 Hz
+                t_samples = np.floor(t_dur*fs)
+                samples = sample_dur*fs
+                # EOG → (channels, time)
+                sampleStart = int(fix_dur*fs+np.floor((t_samples)/2)-(samples)/2) #take 2 secs at the middle of the trial for each trial
+                sampleEnd = int(fix_dur*fs+np.floor((t_samples)/2)+(samples)/2)
+                eog_trial = eog[sampleStart:sampleEnd, t, c, e]
+
+                blink_trial = blink[sampleStart:sampleEnd, t, c, e]
+                sacc_trial = saccade[sampleStart:sampleEnd, t, c, e]
+                pursuit_trial = pursuit[sampleStart:sampleEnd, t, c, e]
+
+                # Concatenate channels
+                trial = np.stack([
+                    eog_trial,
+                    blink_trial,
+                    sacc_trial,
+                    pursuit_trial
+                ], axis=0)  # (channels_total (n_variables*n_eyes), time)
+
+                X_list.append(trial)
+                x_pos.append(eyelink_x[sampleStart:sampleEnd,t, c, e])
+                x_dir.append(dir_labels[c])
+                x_speed.append(speed[t, c])
+
+    X = np.array(X_list)          # (N_trials, channels, time)
+    # X = np.nan_to_num(X, nan=0.0)
+    x_pos = np.array(x_pos)
+    x_dir = np.array(x_dir)
+    x_speed = np.array(x_speed)
+
+    return X, x_pos, x_dir, x_speed
+
 #-----------------------------------------------
 # Interpolate data when there are blinks or eye position is too far away from the screen
 #-----------------------------------------------
+#Usage:
+        # X_train_eog = ch.interpolate_gaps(X_train[:, :2, :],train_mask)
+        # x_pos_train = ch.interpolate_gaps(x_pos_train, train_mask)
 import numpy as np
 
 def interpolate_gaps(data, mask):
@@ -192,12 +279,12 @@ def get_network_output(model, dataset, batch_size=32):
     all_targets_speed = []
 
     with torch.no_grad():
-        for X, x_pos, x_speed in loader:
+        for X, x_pos_norm, x_pos, x_speed in loader:
             pred_pos = model(X)
             # pred_dir, pred_speed = model(X)
             
             all_pos.append(pred_pos.cpu())
-            all_targets_pos.append(x_pos.cpu())
+            all_targets_pos.append(x_pos_norm.cpu())
             # all_dir.append(pred_dir.cpu())
             # all_speed.append(pred_speed.cpu())
             # all_targets_dir.append(x_dir.cpu())
@@ -208,30 +295,80 @@ def get_network_output(model, dataset, batch_size=32):
     pred_pos = torch.cat(all_pos).numpy()
     # y_dir = torch.cat(all_targets_dir).numpy()
     
-    x_pos = torch.cat(all_targets_pos).numpy()
+    x_pos_norm = torch.cat(all_targets_pos).numpy()
     x_speed = torch.cat(all_targets_speed).numpy()
 
-    return pred_pos, x_pos, x_speed
+    return pred_pos, x_pos_norm, x_speed
 
 def get_direction_performance(pred_dir, y_dir):
     pred_labels = np.argmax(pred_dir, axis=1)
     acc = np.mean(pred_labels == y_dir)
     return acc
 
+# def get_pos_performance(pred_pos, x_pos):
+#     rmse = np.sqrt(np.mean((pred_pos.squeeze() - x_pos)**2))
+#     return rmse
+
 def get_pos_performance(pred_pos, x_pos):
-    rmse = np.sqrt(np.mean((pred_pos.squeeze() - x_pos)**2))
+    pred_pos = pred_pos.squeeze()
+
+    valid = (~np.isnan(pred_pos)) & (~np.isnan(x_pos))
+
+    rmse = np.sqrt(np.mean((pred_pos[valid] - x_pos[valid])**2))
     return rmse
+
+# def get_pos_performance(pred_pos, x_pos):
+#     pred_pos = pred_pos.squeeze()
+
+#     n_trials, n_eyes, n_timepts = pred_pos.shape()
+#     rmse = np.full(n_eyes, np.nan)
+
+#     for eye in range(n_eyes):
+
+#         valid = (
+#             ~np.isnan(pred_pos[:, eye, :]) &
+#             ~np.isnan(x_pos[:, eye, :])
+#         )
+
+#         rmse[eye] = np.sqrt(
+#             np.mean(
+#                 (pred_pos[:, eye, :][valid] -
+#                  x_pos[:, eye, :][valid])**2
+#             )
+#         )
+#     return rmse
+
+# def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
+#     pred_pos = pred_pos.squeeze()
+#     speed_list= np.unique(x_speed)
+#     rmse_per_speed = np.full(len(speed_list), np.nan)
+
+#     for i, speed in enumerate(speed_list):
+#         idx = x_speed == speed
+
+#         if np.sum(idx) > 0:
+#             rmse_per_speed[i] = np.sqrt(
+#                 np.mean((pred_pos[idx] - x_pos[idx])**2)
+#             )
+
+#     return rmse_per_speed
 
 
 def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
     pred_pos = pred_pos.squeeze()
-    speed_list= np.unique(x_speed)
+
+    speed_list = np.unique(x_speed)
     rmse_per_speed = np.full(len(speed_list), np.nan)
 
     for i, speed in enumerate(speed_list):
-        idx = x_speed == speed
 
-        if np.sum(idx) > 0:
+        idx = (
+        (x_speed[:, None, None] == speed) &
+        (~np.isnan(pred_pos)) &
+        (~np.isnan(x_pos))
+        )
+
+        if np.any(idx):
             rmse_per_speed[i] = np.sqrt(
                 np.mean((pred_pos[idx] - x_pos[idx])**2)
             )
@@ -451,9 +588,11 @@ def plot_pred_vs_true(
     x_pred,
     subjects=None,
     save_path=".",
+    save_name="figure",
     channel_idx=0,
     time=None,
     max_trials=20,          # avoid plotting hundreds
+    ylim =None,
 ):
     """
     Plot predicted vs true eye position traces per trial.
@@ -507,6 +646,7 @@ def plot_pred_vs_true(
 
         if i == 0:
             ax.legend()
+        ax.set_ylim(ylim)
 
     axes[-1].set_xlabel("Time")
 
@@ -516,5 +656,5 @@ def plot_pred_vs_true(
     # Save
     # -------------------------
     os.makedirs(save_path, exist_ok=True)
-    plt.savefig(op.join(save_path, "pred_vs_true_trials.png"), dpi=300)
+    plt.savefig(op.join(save_path, save_name), dpi=300)
     plt.show()
