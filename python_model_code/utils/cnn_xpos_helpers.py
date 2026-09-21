@@ -317,42 +317,6 @@ def get_pos_performance(pred_pos, x_pos):
     rmse = np.sqrt(np.mean((pred_pos[valid] - x_pos[valid])**2))
     return rmse
 
-# def get_pos_performance(pred_pos, x_pos):
-#     pred_pos = pred_pos.squeeze()
-
-#     n_trials, n_eyes, n_timepts = pred_pos.shape()
-#     rmse = np.full(n_eyes, np.nan)
-
-#     for eye in range(n_eyes):
-
-#         valid = (
-#             ~np.isnan(pred_pos[:, eye, :]) &
-#             ~np.isnan(x_pos[:, eye, :])
-#         )
-
-#         rmse[eye] = np.sqrt(
-#             np.mean(
-#                 (pred_pos[:, eye, :][valid] -
-#                  x_pos[:, eye, :][valid])**2
-#             )
-#         )
-#     return rmse
-
-# def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
-#     pred_pos = pred_pos.squeeze()
-#     speed_list= np.unique(x_speed)
-#     rmse_per_speed = np.full(len(speed_list), np.nan)
-
-#     for i, speed in enumerate(speed_list):
-#         idx = x_speed == speed
-
-#         if np.sum(idx) > 0:
-#             rmse_per_speed[i] = np.sqrt(
-#                 np.mean((pred_pos[idx] - x_pos[idx])**2)
-#             )
-
-#     return rmse_per_speed
-
 
 def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
     pred_pos = pred_pos.squeeze()
@@ -391,8 +355,9 @@ def get_network_cat_performance(pred_out, targets, n_classes):
 
     return cat_perf
 
-
+#===================================================
 ### Figures
+#===================================================
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path as op
@@ -576,8 +541,136 @@ def plot_trial(
 
     plt.tight_layout()
     plt.show()
+
+# ==================
+# Plot RMSE per speed across cross-validations
+# ================== 
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import os.path as op
+
+def plot_speed_rmse_duration_comparison(results,
+                                   participant_colors,
+                                   save_path=None,
+                                   filename="speed_specific_prediction_rmse_by_duration.png"):
+
+    durations = sorted(results.keys())
+    n_durations = len(durations)
+
+    fig, axes = plt.subplots(
+        1,
+        n_durations,
+        figsize=(5*n_durations, 6),
+        sharey=True
+    )
+
+    if n_durations == 1:
+        axes = [axes]
+
+    for ax, duration in zip(axes, durations):
+
+        crossvalit_perfs = results[duration]["speed_rmse"]
+
+        # (participants, speeds, CV)
+        n_participants, n_speeds, n_cv = crossvalit_perfs.shape
+
+        # Average across CV folds
+        mean_perfs = np.nanmean(crossvalit_perfs, axis=2)
+
+        participants = np.repeat(np.arange(n_participants), n_speeds)
+        speeds = np.tile(np.arange(n_speeds)+5, n_participants)
+
+        df = pd.DataFrame({
+            "participant": participants,
+            "speed": speeds,
+            "RMSE": mean_perfs.reshape(-1)
+        })
+
+        order = np.sort(df["speed"].unique())
+        speed_to_idx = {s: i for i, s in enumerate(order)}
+
+        # Violin
+        sns.violinplot(
+            x="speed",
+            y="RMSE",
+            data=df,
+            order=order,
+            ax=ax,
+            inner=None,
+            color="lightgray"
+        )
+
+        # Individual participants
+        sns.stripplot(
+            x="speed",
+            y="RMSE",
+            data=df,
+            order=order,
+            jitter=True,
+            size=5,
+            ax=ax
+        )
+
+        # Connect participant points
+        for p in range(n_participants):
+
+            sub = df[df["participant"] == p]
+
+            x_vals = [speed_to_idx[s] for s in sub["speed"]]
+
+            ax.plot(
+                x_vals,
+                sub["RMSE"],
+                color=participant_colors[p],
+                alpha=0.7,
+                linewidth=1.5
+            )
+
+        # Mean ± SEM
+        means = df.groupby("speed")["RMSE"].mean()
+        sems = df.groupby("speed")["RMSE"].sem()
+
+        ax.errorbar(
+            np.arange(len(order)),
+            means.loc[order],
+            yerr=sems.loc[order],
+            fmt='-o',
+            color='black',
+            linewidth=2,
+            capsize=4,
+            zorder=10
+        )
+
+        ax.set_title(f"{duration:.1f} s", fontsize=18, fontweight="bold")
+        ax.set_xlabel("Speed (deg/s)", fontsize=14)
+        ax.set_ylim(0, 1.8)
+
+    axes[0].set_ylabel("RMSE", fontsize=14)
+
+    fig.suptitle(
+        "Prediction error across stimulus speeds and durations",
+        fontsize=20,
+        fontweight="bold"
+    )
+
+    plt.tight_layout(rect=[0,0,1,0.95])
+
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(
+            op.join(save_path, filename),
+            dpi=300,
+            bbox_inches="tight"
+        )
+
+    plt.show()
+
 #========================================================================================
-#
+#Plot predicted vs true traces
+
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -595,7 +688,7 @@ def plot_pred_vs_true(
     ylim =None,
 ):
     """
-    Plot predicted vs true eye position traces per trial.
+    Plot predicted vs true (eyelink) gaze position traces per trial.
 
     Parameters
     ----------
@@ -658,3 +751,310 @@ def plot_pred_vs_true(
     os.makedirs(save_path, exist_ok=True)
     plt.savefig(op.join(save_path, save_name), dpi=300)
     plt.show()
+
+# Same data but plotted differently with true = x,  pred = y 
+
+def plot_pred_vs_true_position_clouds(
+    results,
+    speeds=None,
+    durations=None,
+    subjects=None,
+    max_trials=None,
+    channel_idx=0,
+    save_path=None,
+    filename="predicted_vs_true_position_clouds",
+    alpha=0.15,
+    point_size=5,
+    xlim=None,
+    ylim=None,
+):
+    """
+
+    Plot predicted eye position vs true eyelink gaze position as point clouds,
+    organized by stimulus speed and sample duration.
+
+    Creates multiple 4x4 figures rather than one large figure.
+    Each figure contains 16 speeds, with durations represented
+    by separate figures.
+
+    Each trial is plotted in a different color.
+
+    Parameters
+    ----------
+    results : dict
+        Dictionary containing the true and predicted position arrays.
+
+        Expected structure:
+
+            results[duration][speed]["x_pos"]
+            results[duration][speed]["x_pred"]
+
+        Arrays can have shape:
+            (trials, time)
+        or
+            (trials, channels, time)
+
+    speeds : list, optional
+        Speeds to plot. If None, uses all speeds found in results.
+
+    durations : list, optional
+        Durations to plot. If None, uses all durations.
+
+    subjects : array-like, optional
+        Subject ID for each trial.
+
+    max_trials : int, optional
+        Maximum number of trials per condition. None = all trials.
+
+    channel_idx : int
+        Channel to use if arrays have shape (trials, channels, time).
+
+    alpha : float
+        Transparency of individual points.
+
+    point_size : float
+        Size of individual points.
+
+    xlim, ylim : tuple, optional
+        Axis limits.
+
+
+    """
+
+    # ------------------------------------------------------------
+    # Determine durations
+    # ------------------------------------------------------------
+    if durations is None:
+        durations = sorted(results.keys())
+
+    # ------------------------------------------------------------
+    # Determine speeds
+    # ------------------------------------------------------------
+    if speeds is None:
+        n_speeds = results[durations[0]]["speed_rmse"].shape[1]
+        speeds = np.arange(n_speeds) + 5
+
+    speeds = list(speeds)
+
+    # ------------------------------------------------------------
+    # Split speeds into groups of 16
+    # ------------------------------------------------------------
+    speed_groups = [
+        speeds[i:i + 16]
+        for i in range(0, len(speeds), 16)
+    ]
+
+    # ------------------------------------------------------------
+    # One figure per duration × speed group
+    # ------------------------------------------------------------
+    for duration in durations:
+
+        for group_idx, speed_group in enumerate(speed_groups):
+
+            n_speeds_group = len(speed_group)
+
+            # ----------------------------------------------------
+            # Create 4x4 figure
+            # ----------------------------------------------------
+            fig, axes = plt.subplots(
+                4,
+                4,
+                figsize=(16, 16),
+                squeeze=False
+            )
+
+            axes = axes.flatten()
+
+            # ----------------------------------------------------
+            # Plot each speed
+            # ----------------------------------------------------
+            for s, speed in enumerate(speed_group):
+
+                ax = axes[s]
+
+                # ------------------------------------------------
+                # Select trials with this speed
+                # ------------------------------------------------
+                speed_mask = (
+                    results[duration]["true_speed"] == speed
+                )
+
+                x_pos = results[duration]["true_pos"][speed_mask]
+                x_pred = results[duration]["pred_pos"][speed_mask]
+
+                # Handle (trials, channels, time)
+                if x_pos.ndim == 3:
+                    x_pos = x_pos[:, channel_idx, :]
+                    x_pred = x_pred[:, channel_idx, :]
+
+                n_trials = x_pos.shape[0]
+
+                if max_trials is not None:
+                    n_trials = min(n_trials, max_trials)
+
+                x_pos = x_pos[:n_trials]
+                x_pred = x_pred[:n_trials]
+
+                # ------------------------------------------------
+                # Colors: one color per trial
+                # ------------------------------------------------
+                trial_colors = plt.cm.turbo(
+                    np.linspace(0, 1, n_trials)
+                )
+
+                all_true = []
+                all_pred = []
+
+                # ------------------------------------------------
+                # Plot each trial
+                # ------------------------------------------------
+                for trial in range(n_trials):
+
+                    true_values = x_pos[trial].reshape(-1)
+                    pred_values = x_pred[trial].reshape(-1)
+
+                    valid = (
+                        np.isfinite(true_values)
+                        & np.isfinite(pred_values)
+                    )
+
+                    true_values = true_values[valid]
+                    pred_values = pred_values[valid]
+
+                    if len(true_values) == 0:
+                        continue
+
+                    all_true.append(true_values)
+                    all_pred.append(pred_values)
+
+                    ax.scatter(
+                        true_values,
+                        pred_values,
+                        s=point_size,
+                        alpha=alpha,
+                        color=trial_colors[trial],
+                        rasterized=True
+                    )
+
+                # ------------------------------------------------
+                # Overall statistics
+                # ------------------------------------------------
+                if len(all_true) > 0:
+
+                    true_all = np.concatenate(all_true)
+                    pred_all = np.concatenate(all_pred)
+
+                    if xlim is not None:
+                        line_min = xlim[0]
+                        line_max = xlim[1]
+                    else:
+                        line_min = min(
+                            np.min(true_all),
+                            np.min(pred_all)
+                        )
+                        line_max = max(
+                            np.max(true_all),
+                            np.max(pred_all)
+                        )
+
+                    # Identity line
+                    ax.plot(
+                        [line_min, line_max],
+                        [line_min, line_max],
+                        "--",
+                        color="black",
+                        linewidth=1.5
+                    )
+
+                    # r
+                    if len(true_all) > 1:
+
+                        r = np.corrcoef(
+                            true_all,
+                            pred_all
+                        )[0, 1]
+
+                        rmse = np.sqrt(
+                            np.mean(
+                                (pred_all - true_all) ** 2
+                            )
+                        )
+
+                        ax.text(
+                            0.05,
+                            0.95,
+                            f"r = {r:.2f}\nRMSE = {rmse:.2f}",
+                            transform=ax.transAxes,
+                            va="top",
+                            fontsize=10
+                        )
+
+                # ------------------------------------------------
+                # Formatting
+                # ------------------------------------------------
+                ax.set_title(
+                    f"{speed}°/s",
+                    fontsize=14,
+                    fontweight="bold"
+                )
+
+                ax.set_xlabel(
+                    "True x position",
+                    fontsize=10
+                )
+
+                ax.set_ylabel(
+                    "Predicted x position",
+                    fontsize=10
+                )
+
+                if xlim is not None:
+                    ax.set_xlim(xlim)
+
+                if ylim is not None:
+                    ax.set_ylim(ylim)
+
+                ax.set_aspect("equal", adjustable="box")
+
+            # ----------------------------------------------------
+            # Hide unused panels
+            # ----------------------------------------------------
+            for s in range(n_speeds_group, 16):
+                axes[s].axis("off")
+
+            # ----------------------------------------------------
+            # Figure title
+            # ----------------------------------------------------
+            first_speed = speed_group[0]
+            last_speed = speed_group[-1]
+
+            fig.suptitle(
+                f"Duration = {duration:.1f} s | "
+                f"Speeds {first_speed}–{last_speed}°/s",
+                fontsize=20,
+                fontweight="bold"
+            )
+
+            plt.tight_layout(
+                rect=[0, 0, 1, 0.96]
+            )
+
+            # ----------------------------------------------------
+            # Save
+            # ----------------------------------------------------
+            if save_path is not None:
+
+                os.makedirs(save_path, exist_ok=True)
+
+                filename_group = (
+                    f"{filename}_duration_{duration:.1f}"
+                    f"_speeds_{first_speed}_{last_speed}.png"
+                )
+
+                plt.savefig(
+                    op.join(save_path, filename_group),
+                    dpi=300,
+                    bbox_inches="tight"
+                )
+
+            plt.show()
