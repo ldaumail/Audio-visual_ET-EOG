@@ -433,13 +433,197 @@ import matplotlib.pyplot as plt
 
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 
-ch.plot_invalid_values_per_trial(
+ch.plot_invalid_values(
     training_data,
     speeds=None,
     durations=None,
     channel_idx=0,
-    max_trials=None,
-    percentage=True,
     save_path=save_path,
     filename="invalid_values_per_trial.png",
 )
+
+
+
+
+#### Plot training data ! here we need to check if normalization impacted some trials.
+
+# ------------------------------------------------------------
+# Determine durations
+# ------------------------------------------------------------
+
+durations = sorted(training_data.keys())
+
+# ------------------------------------------------------------
+# Determine speeds
+# ------------------------------------------------------------
+
+n_speeds = np.unique(training_data[durations[0]]["training_speed"]).shape[0]
+speeds = np.arange(n_speeds) + 5
+speeds = list(speeds)
+
+# ------------------------------------------------------------
+# Split speeds into groups of 16
+# ------------------------------------------------------------
+speed_groups = [
+    speeds[i:i + 16]
+    for i in range(0, len(speeds), 16)
+]
+
+# ------------------------------------------------------------
+# One figure per duration × speed group
+# ------------------------------------------------------------
+for duration in durations:
+
+    for group_idx, speed_group in enumerate(speed_groups):
+
+        n_speeds_group = len(speed_group)
+
+        # ----------------------------------------------------
+        # Create 4x4 figure
+        # ----------------------------------------------------
+        fig, axes = plt.subplots(
+            4,
+            4,
+            figsize=(16, 16),
+            squeeze=False
+        )
+
+        axes = axes.flatten()
+
+        # ----------------------------------------------------
+        # Plot each speed
+        # ----------------------------------------------------
+        for s, speed in enumerate(speed_group):
+
+            ax = axes[s]
+
+            # ------------------------------------------------
+            # Select trials with this speed
+            # ------------------------------------------------
+            speed_mask = (
+                training_data[duration]["training_speed"] == speed
+            )
+
+            time = np.arange(training_data[duration]["training_x_pos"].shape[2])
+            x_pos = training_data[duration]["training_x_pos"][speed_mask]
+            
+            channel_idx = 0
+            # Handle (trials, channels, time)
+            if x_pos.ndim == 3:
+                x_pos = x_pos[:, channel_idx, :]
+                
+
+            n_trials = x_pos.shape[0]
+
+            x_pos = x_pos[:n_trials]
+
+            # ------------------------------------------------
+            # Colors: one color per trial
+            # ------------------------------------------------
+            trial_colors = plt.cm.turbo(
+                np.linspace(0, 1, n_trials)
+            )
+
+            all_true = []
+            # ------------------------------------------------
+            # Plot each trial
+            # ------------------------------------------------
+            for trial in range(n_trials):
+
+                true_values = x_pos[trial].reshape(-1)
+
+                valid = (
+                    np.isfinite(true_values)
+                )
+                true_values = true_values[valid]
+
+                if len(true_values) == 0:
+                    continue
+
+                all_true.append(true_values)
+                point_size=5
+                ax.scatter(
+                    time,
+                    true_values,
+                    s=point_size,
+                    alpha=0.15,
+                    color=trial_colors[trial],
+                    rasterized=True
+                )
+
+            # ------------------------------------------------
+            # Overall statistics
+            # ------------------------------------------------
+            if len(all_true) > 0:
+
+                true_all = np.concatenate(all_true)
+
+            # ------------------------------------------------
+            # Formatting
+            # ------------------------------------------------
+            ax.set_title(
+                f"{speed}°/s",
+                fontsize=14,
+                fontweight="bold"
+            )
+
+            ax.set_xlabel(
+                "Time",
+                fontsize=10
+            )
+
+            ax.set_ylabel(
+                " x position",
+                fontsize=10
+            )
+
+            # if xlim is not None:
+            #     ax.set_xlim(xlim)
+
+            # if ylim is not None:
+            ax.set_ylim(-3,3)
+
+            ax.set_aspect("equal", adjustable="box")
+
+        # ----------------------------------------------------
+        # Hide unused panels
+        # ----------------------------------------------------
+        for s in range(n_speeds_group, 16):
+            axes[s].axis("off")
+
+        # ----------------------------------------------------
+        # Figure title
+        # ----------------------------------------------------
+        first_speed = speed_group[0]
+        last_speed = speed_group[-1]
+
+        fig.suptitle(
+            f"Duration = {duration:.1f} s | "
+            f"Speeds {first_speed}–{last_speed}°/s",
+            fontsize=20,
+            fontweight="bold"
+        )
+
+        plt.tight_layout(
+            rect=[0, 0, 1, 0.96]
+        )
+
+        # ----------------------------------------------------
+        # Save
+        # ----------------------------------------------------
+        if save_path is not None:
+
+            os.makedirs(save_path, exist_ok=True)
+
+            # filename_group = (
+            #     f"{filename}_duration_{duration:.1f}"
+            #     f"_speeds_{first_speed}_{last_speed}.png"
+            # )
+
+            # plt.savefig(
+            #     op.join(save_path, filename_group),
+            #     dpi=300,
+            #     bbox_inches="tight"
+            # )
+
+        plt.show()

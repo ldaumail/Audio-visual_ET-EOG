@@ -1058,267 +1058,185 @@ def plot_pred_vs_true_position_clouds(
                 )
 
             plt.show()
-
-
+#===========================================================
+# Check amount of data deviating too far away from the screen.
+#===========================================================
 import os
 import matplotlib.pyplot as plt
-def plot_invalid_values_per_trial(
-    training_data,
-    speeds=None,
-    durations=None,
-    channel_idx=0,
-    max_trials=None,
-    percentage=False,
-    save_path=None,
-    filename="invalid_values_per_trial",
-):
-    """
-    Plot the number of NaN/Inf values for each trial,
-    organized by duration and stimulus speed.
 
-    One figure is created for each duration, with up to 16 speed
-    conditions arranged in a 4 x 4 grid.
+def plot_invalid_values( training_data, speeds=None, durations=None, channel_idx=0, save_path=None, filename="invalid_values_by_speed_duration.png", ):
+    """ Plot the percentage of NaN/Inf values for each speed,
+      with one subplot per duration. 
+    Each bar represents the percentage of 
+    invalid values across all trials for a given speed. 
+    Parameters 
+    ---------- 
+    training_data : dict Dictionary containing: 
+    training_data[duration]["training_x_pos"] 
+    training_data[duration]["training_speed"] 
+    Arrays can have shape: (trials, time) 
+    or: (trials, channels, time) 
+    speeds : list, optional Speeds to plot. 
+    If None, uses all unique speeds. 
+    durations : list, optional Durations to plot. 
+    If None, uses all durations. 
+    channel_idx : int Channel to use if arrays have shape (trials, channels, time). 
+    save_path : str, optional Directory in which to save the figure. 
+    filename : str Name of the saved figure. """ 
+    # ------------------------------------------------------------ # Determine durations # ------------------------------------------------------------ 
+    if durations is None: 
+        durations = sorted(training_data.keys()) 
+    # ------------------------------------------------------------ # Determine speeds # ------------------------------------------------------------
+    if speeds is None: 
+        speeds = np.unique( training_data[durations[0]]["training_speed"] ) 
+    speeds = list(speeds) 
+    # ------------------------------------------------------------ # Create one subplot per duration # ------------------------------------------------------------ 
 
-    Parameters
-    ----------
-    training_data : dict
-        Dictionary containing:
+    n_durations = len(durations)
 
-            results[duration]["true_pos"]
-            results[duration]["pred_pos"]
-            results[duration]["true_speed"]
+    fig, axes = plt.subplots(
+        n_durations,
+        1,
+        figsize=(14, 4 * n_durations),
+        squeeze=False
+    )
 
-        Arrays can have shape:
-            (trials, time)
-        or:
-            (trials, channels, time)
-
-    speeds : list, optional
-        Speeds to plot. If None, uses 5, 6, ... based on speed_rmse.
-
-    durations : list, optional
-        Durations to plot. If None, uses all durations.
-
-    channel_idx : int
-        Channel to use if arrays have shape (trials, channels, time).
-
-    max_trials : int, optional
-        Maximum number of trials to display per speed.
-
-    percentage : bool
-        If True, plot percentage of invalid values rather than
-        number of invalid values.
-
-    save_path : str, optional
-        Directory in which to save figures.
-
-    filename : str
-        Base filename for saved figures.
-    """
-
-    # ------------------------------------------------------------
-    # Determine durations
-    # ------------------------------------------------------------
-    if durations is None:
-        durations = sorted(training_data.keys())
-
-    # ------------------------------------------------------------
-    # Determine speeds
-    # ------------------------------------------------------------
-    if speeds is None:
-        n_speeds = len(np.unique(training_data[durations[0]]["training_speed"]))
-        speeds = np.arange(n_speeds) + 5
-
-    speeds = list(speeds)
-
-    # ------------------------------------------------------------
-    # Split speeds into groups of 16
-    # ------------------------------------------------------------
-    speed_groups = [
-        speeds[i:i + 16]
-        for i in range(0, len(speeds), 16)
-    ]
+    axes = axes.flatten()
 
     # ------------------------------------------------------------
     # Loop over durations
     # ------------------------------------------------------------
-    for duration in durations:
+    for ax, duration in zip(axes, durations):
 
-        for group_idx, speed_group in enumerate(speed_groups):
+        means = []
+        sems = []
 
-            fig, axes = plt.subplots(
-                4,
-                4,
-                figsize=(16, 12),
-                squeeze=False
+        # --------------------------------------------------------
+        # Loop over speeds
+        # --------------------------------------------------------
+        for speed in speeds:
+
+            speed_mask = (
+                training_data[duration]["training_speed"] == speed
             )
 
-            axes = axes.flatten()
-
-            # ----------------------------------------------------
-            # Loop over speeds
-            # ----------------------------------------------------
-            for s, speed in enumerate(speed_group):
-
-                ax = axes[s]
-
-                # ------------------------------------------------
-                # Select trials for this speed
-                # ------------------------------------------------
-                speed_mask = (
-                    training_data[duration]["training_speed"] == speed
-                )
-
-                x_pos = training_data[duration]["training_x_pos"][speed_mask]
-                # x_pred = results[duration]["pred_pos"][speed_mask]
-
-                # ------------------------------------------------
-                # Select channel if necessary
-                # ------------------------------------------------
-                if x_pos.ndim == 3:
-                    x_pos = x_pos[:, channel_idx, :]
-                    # x_pred = x_pred[:, channel_idx, :]
-
-                n_trials = x_pos.shape[0]
-
-                if max_trials is not None:
-                    n_trials = min(n_trials, max_trials)
-
-                x_pos = x_pos[:n_trials]
-                # x_pred = x_pred[:n_trials]
-
-                # ------------------------------------------------
-                # Count invalid values per trial
-                # ------------------------------------------------
-                invalid_true = np.sum(
-                    ~np.isfinite(x_pos),
-                    axis=tuple(range(1, x_pos.ndim))
-                )
-
-                # invalid_pred = np.sum(
-                #     ~np.isfinite(x_pred),
-                #     axis=tuple(range(1, x_pred.ndim))
-                # )
-
-                # ------------------------------------------------
-                # Combine true + predicted invalid values
-                # ------------------------------------------------
-                # invalid_total = (
-                #     invalid_true + invalid_pred
-                # )
-
-                # ------------------------------------------------
-                # Convert to percentage if requested
-                # ------------------------------------------------
-                if percentage:
-
-                    n_values = np.prod(
-                        x_pos.shape[1:]
-                    )
-
-                    invalid_total = (
-                        invalid_true
-                        / (2 * n_values)
-                        * 100
-                    )
-
-                    ylabel = "Invalid values (%)"
-
-                else:
-
-                    ylabel = "NaN / Inf values"
-
-                # ------------------------------------------------
-                # Plot each trial
-                # ------------------------------------------------
-                trial_numbers = np.arange(1, n_trials + 1)
-
-                ax.bar(
-                    trial_numbers,
-                    invalid_true
-                )
-
-                # ------------------------------------------------
-                # Formatting
-                # ------------------------------------------------
-                ax.set_title(
-                    f"{speed}°/s",
-                    fontsize=14,
-                    fontweight="bold"
-                )
-
-                ax.set_xlabel(
-                    "Trial",
-                    fontsize=10
-                )
-
-                ax.set_ylabel(
-                    ylabel,
-                    fontsize=10
-                )
-
-                ax.set_xticks(trial_numbers)
-
-                # Avoid overcrowding if many trials
-                if n_trials > 20:
-                    ax.set_xticks(
-                        trial_numbers[::5]
-                    )
-
-                ax.grid(
-                    axis="y",
-                    alpha=0.3
-                )
-
-            # ----------------------------------------------------
-            # Hide unused panels
-            # ----------------------------------------------------
-            for s in range(
-                len(speed_group),
-                16
-            ):
-                axes[s].axis("off")
-
-            # ----------------------------------------------------
-            # Figure title
-            # ----------------------------------------------------
-            first_speed = speed_group[0]
-            last_speed = speed_group[-1]
-
-            fig.suptitle(
-                f"Invalid values per trial — "
-                f"Duration = {duration:.1f} s\n"
-                f"Speeds {first_speed}–{last_speed}°/s",
-                fontsize=20,
-                fontweight="bold"
-            )
-
-            plt.tight_layout(
-                rect=[0, 0, 1, 0.94]
+            x_pos = (
+                training_data[duration]["training_x_pos"][speed_mask]
             )
 
             # ----------------------------------------------------
-            # Save
+            # Select channel if necessary
             # ----------------------------------------------------
-            if save_path is not None:
+            if x_pos.ndim == 3:
+                x_pos = x_pos[:, channel_idx, :]
 
-                os.makedirs(
-                    save_path,
-                    exist_ok=True
+            # ----------------------------------------------------
+            # Calculate invalid percentage PER TRIAL
+            # ----------------------------------------------------
+            invalid_count = np.sum((x_pos < -30) | (x_pos > 30), axis=tuple(range(1, x_pos.ndim)))
+
+            total_values_per_trial = x_pos.shape[1]
+
+            invalid_percentage_per_trial = (invalid_count / total_values_per_trial * 100)
+
+            # ----------------------------------------------------
+            # Mean ± SEM across trials
+            # ----------------------------------------------------
+            mean_percentage = np.mean(invalid_percentage_per_trial)
+
+            sem_percentage = (np.std(invalid_percentage_per_trial,ddof=1)
+                / np.sqrt(len(invalid_percentage_per_trial)))
+
+            means.append(mean_percentage)
+            sems.append(sem_percentage)
+
+        # --------------------------------------------------------
+        # Plot one bar per speed
+        # --------------------------------------------------------
+        bars = ax.bar(
+            speeds,
+            means,
+            yerr=sems,
+            capsize=5
+        )
+
+        # --------------------------------------------------------
+        # Formatting
+        # --------------------------------------------------------
+        ax.set_title(
+            f"Duration = {duration:.1f} s",
+            fontsize=16,
+            fontweight="bold"
+        )
+
+        ax.set_xlabel(
+            "Speed (°/s)",
+            fontsize=13
+        )
+
+        ax.set_ylabel(
+            "Values outside ±30 (%)",
+            fontsize=13
+        )
+
+        ax.set_xticks(speeds)
+
+        ax.grid(
+            axis="y",
+            alpha=0.3
+        )
+
+        # --------------------------------------------------------
+        # Add mean percentage above each bar
+        # --------------------------------------------------------
+        for bar, mean_percentage, sem_percentage in zip(
+            bars,
+            means,
+            sems
+        ):
+
+            if mean_percentage > 0:
+
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + sem_percentage,
+                    f"{mean_percentage:.1f}%",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9
                 )
 
-                filename_group = (
-                    f"{filename}_duration_{duration:.1f}"
-                    f"_speeds_{first_speed}_{last_speed}.png"
-                )
 
-                plt.savefig(
-                    op.join(
-                        save_path,
-                        filename_group
-                    ),
-                    dpi=300,
-                    bbox_inches="tight"
-                )
+    # ------------------------------------------------------------
+    # Figure title — IMPORTANT: outside the duration loop
+    # ------------------------------------------------------------
+    fig.suptitle(
+        "Values outside ±30 across stimulus speeds and durations",
+        fontsize=20,
+        fontweight="bold"
+    )
 
-            plt.show()
+    plt.tight_layout(
+        rect=[0, 0, 1, 0.97]
+    )
+
+    # ------------------------------------------------------------
+    # Save
+    # ------------------------------------------------------------
+    if save_path is not None:
+
+        os.makedirs(
+            save_path,
+            exist_ok=True
+        )
+
+        plt.savefig(
+            op.join(
+                save_path,
+                filename
+            ),
+            dpi=300,
+            bbox_inches="tight"
+        )
+
+    plt.show()
