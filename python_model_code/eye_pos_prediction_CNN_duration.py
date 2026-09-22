@@ -196,7 +196,7 @@ def crop_sequences(X, x_pos, n_samples):
 # allspeed_training_accuracy = np.zeros([6,5])
 # allpos_training_accuracy = np.zeros([6,5])
 
-
+training_data = {}
 results = {}
 
 for duration, n_samples in sequence_lengths.items():
@@ -204,11 +204,17 @@ for duration, n_samples in sequence_lengths.items():
     print(f"\n==============================")
     print(f"Training with {duration:.1f} s sequences")
     print(f"==============================")
+    #training
+    all_train_pos = []
+    all_train_eog = []
+    all_train_speed = []
+    #testing
     all_pred_pos = []
     all_true_pos = []
     all_true_speed = []
     all_fold_ids = []
     all_cv_ids = []
+    
 
     crossvalit_allpos_perfs = np.zeros((6,5))
     crossvalit_speed_perfs = np.zeros((6,16,5))
@@ -306,6 +312,10 @@ for duration, n_samples in sequence_lengths.items():
             x_pos_train_norm = (x_pos_train - xpos_mean) / (xpos_std + 1e-8)
             x_pos_test_norm  = (x_pos_test  - xpos_mean) / (xpos_std + 1e-8)
 
+            #save TRAINING data eye X pos and eog X 
+            all_train_pos.append(x_pos_train_norm)
+            all_train_eog.append(X_train)
+            all_train_speed.append(x_speed_train)
 
             train_dataset = EOGDataset(X_train, x_pos_train_norm,  x_pos_train, x_speed_train) #Makes it pytorch compatible by converting from nyumpy arrays to torch tensors
             test_dataset  = EOGDataset(X_test,  x_pos_test_norm, x_pos_test, x_speed_test)
@@ -317,7 +327,7 @@ for duration, n_samples in sequence_lengths.items():
 
             pred_real = pred_pos * xpos_std + xpos_mean
 
-            # 🔹 save predictions
+            # 🔹 save TEST predictions
             all_pred_pos.append(pred_pos)
             all_true_pos.append(x_pos_norm)
             all_true_speed.append(x_speed)
@@ -340,6 +350,12 @@ for duration, n_samples in sequence_lengths.items():
             # alldir_training_accuracy[t, it] = history["train_acc"][-1]
             training_loss[t, it] = history["train_loss"][-1]
 
+    training_data[duration] = {
+        "training_x_pos" : np.concatenate(all_train_pos),
+        "training_eog": np.concatenate(all_train_eog),
+        "training_speed": np.concatenate(all_train_speed)
+    }
+
     results[duration] = {
     "rmse": crossvalit_allpos_perfs.copy(),
     "speed_rmse": crossvalit_speed_perfs.copy(),
@@ -350,6 +366,7 @@ for duration, n_samples in sequence_lengths.items():
     "fold_ids": np.concatenate(all_fold_ids),
     "cv_ids": np.concatenate(all_cv_ids),
     }
+
 
 # all_true_pos = np.concatenate(all_true_pos)
 # all_pred_pos = np.concatenate(all_pred_pos)
@@ -384,78 +401,13 @@ ch.plot_pred_vs_true_position_clouds(
     max_trials=None,
     channel_idx=0,
     save_path=save_path,
-    filename="predicted_vs_true_position_clouds.png",
+    filename="predicted_vs_true_position_clouds_inf.png",
     alpha=0.08,
     point_size=5,
     xlim=None,
     ylim=None,
 )
 
-
-# #============
-# #Plot position rmse
-# #============
-
-# import numpy as np
-# import matplotlib.pyplot as plt
-# import os
-# n_participants = 6
-# colors = plt.cm.tab10(np.linspace(0, 1, n_participants))
-
-# # mapping: participant → color
-# participant_colors = {i: colors[i] for i in range(n_participants)}
-# save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
-
-# def plotperf(crossvalit_perfs):
-#     """
-#     crossvalit_perfs shape: (n_subjects, n_crossval)
-#     e.g. (6, 5)
-#     """
-
-#     data = [crossvalit_perfs[:, i] for i in range(crossvalit_perfs.shape[1])]
-#     pos = np.arange(1, len(data) + 1)
-
-#     fig = plt.figure()
-
-#     # --- Violin plot ---
-#     plt.violinplot(
-#         data,
-#         pos,
-#         points=300,
-#         widths=0.3,
-#         showmeans=True,
-#         showextrema=True,
-#         showmedians=False
-#     )
-
-#     # --- Scatter (raster) points ---
-#     for i, p in enumerate(pos):
-#         for s in range(crossvalit_perfs.shape[0]):
-#             y = crossvalit_perfs[s, i]
-#             x = np.random.normal(p, 0.03)
-#             plt.scatter(x, y, alpha=0.7, color=participant_colors[s])
-
-#     # --- Connect same subject across CV ---
-#     n_subjects = crossvalit_perfs.shape[0]
-
-#     for s in range(n_subjects):
-#         y = crossvalit_perfs[s, :]
-#         plt.plot(pos, y, alpha=0.7, color=participant_colors[s])
-
-#     # --- Labels ---
-#     plt.title('Distribution of eye position RMSE for every cross-validation')
-#     plt.xlabel('Cross-validation number')
-#     plt.ylabel('RMSE')
-#     # plt.ylim((0, 2))
-
-
-#     os.makedirs(save_path, exist_ok=True)
-#     plt.savefig(op.join(save_path, "xpos_prediction_rmse_filt9_norm-eyelink_validmask.png"), dpi=300, bbox_inches='tight')
-
-#     plt.show()
-
-# # using fnc for class
-# plotperf(crossvalit_allpos_perfs)
 
 # ==================
 #Plot RMSE per speed across cross-validations
@@ -472,75 +424,22 @@ ch.plot_speed_rmse_duration_comparison(results, participant_colors,
                                    save_path=save_path,
                                    filename="speed_specific_prediction_rmse_by_duration.png")
 
-# import pandas as pd
-# import seaborn as sns
-# import numpy as np
-# import matplotlib.pyplot as plt
+#==========================================================
+#Plot amount of NaN or infinite values within training data
+#==========================================================
 
-# def plotseabperf(crossvalit_perfs):
-#     # shape: (participants, speeds, crossval)
+import os
+import matplotlib.pyplot as plt
 
-#     n_participants, n_speeds, n_cv = crossvalit_perfs.shape
+save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 
-#     # -------------------------
-#     # 🔥 Average over cross-validation
-#     # -------------------------
-#     mean_perfs = np.nanmean(crossvalit_perfs, axis=2)  # (6, 16)
-
-#     # -------------------------
-#     # 🔥 Build dataframe
-#     # -------------------------
-#     participants = np.repeat(np.arange(n_participants), n_speeds)
-#     # np.unique(y_speed)
-#     speeds = np.tile(np.arange(n_speeds)+5, n_participants)
-
-#     df = pd.DataFrame({
-#         "participant": participants,
-#         "speed": speeds,
-#         "RMSE": mean_perfs.reshape(-1)
-#     })
-
-#     # -------------------------
-#     # 🔥 Plot
-#     # -------------------------
-#     fig, axes = plt.subplots()
-#     order = np.sort(df["speed"].unique())
-#     speed_to_idx = {s: i for i, s in enumerate(order)}
-#     # violin (distribution across participants)
-#     sns.violinplot(x="speed", y="RMSE", data=df,order=order)
-
-#     # 🔥 add dots (each = participant)
-#     sns.stripplot(x="speed", y="RMSE", data=df, order=order,jitter=True, size=5)
-
-#     # 🔥 connect same participant across speeds
-#     for p in range(n_participants):
-#         sub = df[df["participant"] == p]
-#         x_vals = [speed_to_idx[s] for s in sub["speed"]]
-#         plt.plot(x_vals, sub["RMSE"], alpha=0.7, color=participant_colors[p])
-#     axes.set_ylim((0,1.80))
-#     plt.title('RMSE per speed (averaged across CV)')
-#     plt.xlabel('Speed (deg/sec)')
-#     plt.ylabel('RMSE')
-#     os.makedirs(save_path, exist_ok=True)
-#     plt.savefig(op.join(save_path, "speed_specific_prediction_rmse_filt9_norm-eyelink_validmask.png"), dpi=300, bbox_inches='tight')
-
-#     plt.show()
-
-# # using fnc for class
-# plotseabperf(crossvalit_speed_perfs)
-
-# test_loader = DataLoader(test_dataset, batch_size=32)
-
-# model.eval()
-# all_preds = []
-# all_targets = []
-
-# with torch.no_grad():
-#     for X, mask, y_dir, y_speed in test_loader:
-#         pred_dir, pred_speed = model(X)
-
-#         all_preds.append(pred_dir.argmax(dim=1))
-#         all_targets.append(y_dir)
-
-
-
+ch.plot_invalid_values_per_trial(
+    training_data,
+    speeds=None,
+    durations=None,
+    channel_idx=0,
+    max_trials=None,
+    percentage=True,
+    save_path=save_path,
+    filename="invalid_values_per_trial.png",
+)
