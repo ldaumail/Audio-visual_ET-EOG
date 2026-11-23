@@ -3,7 +3,8 @@ import numpy as np
 from torch.utils.data import DataLoader
 import torch
 import scipy.io as sio
-
+import torch
+from torch.utils.data import Dataset
 # def get_network_performance(model, test_pats, test_targets):
 #     # this presents the test patterns and targets to see how well the trained network generalizes
 #     # to the test patterns (which it did not see during training)
@@ -88,6 +89,32 @@ def load_mat_data(filepath):
             x_pos.append(eyelink_x[sampleStart:sampleEnd,t, c,:].T)
             x_dir.append(dir_labels[c])
             x_speed.append(speed[t, c])
+
+            # # ----------------------------------------
+            # # EyeLink position traces
+            # # ----------------------------------------
+            # eyelink_trial = eyelink_x[
+            #     sampleStart:sampleEnd, t, c, :
+            # ]
+
+            # time = np.arange(sampleStart, sampleEnd) / fs
+
+            # plt.figure(figsize=(10, 4))
+
+            # for eye in range(eyelink_trial.shape[-1]):
+            #     plt.plot(
+            #         time,
+            #         eyelink_trial[:, eye],
+            #         label=f"Eye {eye + 1}"
+            #     )
+
+            # plt.xlabel("Time (s)")
+            # plt.ylabel("EyeLink horizontal position (deg)")
+            # plt.title(f"Condition {c}, Trial {t}, Speed {t_speed}")
+            # plt.legend()
+            # plt.grid(True, alpha=0.3)
+            # plt.tight_layout()
+            # plt.show()
 
     X = np.array(X_list)          # (N_trials, channels, time)
     # X = np.nan_to_num(X, nan=0.0)
@@ -181,14 +208,72 @@ def load_mat_data_1eye(filepath):
 
     return X, x_pos, x_dir, x_speed
 
+#-----------------------------
+# 1: Generate Pytorch Dataset
+#-----------------------------
+class EOGDataset(Dataset):
+    def __init__(self, X, x_pos_norm, x_pos, x_speed):
+        # X = X_train
+        # x_pos = x_pos_train
+
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.x_pos_norm = torch.tensor(x_pos_norm, dtype=torch.float32)
+        self.x_pos = torch.tensor(x_pos, dtype=torch.float32)
+        self.x_speed = torch.tensor(x_speed, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.x_pos_norm[idx], self.x_pos[idx], self.x_speed[idx]
+
+
+#----------------------    
+# 2: Model design
+#----------------------
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class EOGNet(nn.Module):
+    def __init__(self, n_channels):
+        super().__init__()
+
+        self.conv1 = nn.Conv1d(n_channels, 16, kernel_size=9, padding=4)
+        self.conv2 = nn.Conv1d(16, 32, kernel_size=17, padding=8) #kernel_size=17, padding=8
+
+        # 🔥 correct head
+        self.head = nn.Conv1d(in_channels=32, out_channels=2, kernel_size=1)
+
+    def forward(self, x):
+        # x: (B, channels, T)
+        # X = torch.tensor(X, dtype=torch.float32)
+        # x = X
+        # conv1 = nn.Conv1d(6, 16, kernel_size=9, padding=4)
+        # conv2 = nn.Conv1d(16, 32, kernel_size=17, padding=8)
+        # Split
+        x_eog = x[:, :2, :]
+        blink_eog   = x_eog * x[:, 2:4, :]
+        sacc_eog    = x_eog * x[:, 4:6, :]
+        pursuit_eog = x_eog * x[:, 6:8, :]
+
+        # x = torch.cat([blink_eog, sacc_eog, pursuit_eog], dim=1)  # (B, 6, T)
+        x = torch.cat([blink_eog, sacc_eog, pursuit_eog], dim=1)  # (B, 6, T)
+        
+        # CNN
+        x = F.relu(self.conv1(x))   # (B, 16, T) x shape: B = 32, 16, T = 250
+        x = F.relu(self.conv2(x))   # (B, 32, T) x shape: B = 32, 32, T = 250 
+
+        # 🔥 NO flatten
+        x = self.head(x)            # (B, 2, T)
+
+        return x.squeeze(1)         # (B, T)
 #-----------------------------------------------
 # Interpolate data when there are blinks or eye position is too far away from the screen
 #-----------------------------------------------
 #Usage:
         # X_train_eog = ch.interpolate_gaps(X_train[:, :2, :],train_mask)
         # x_pos_train = ch.interpolate_gaps(x_pos_train, train_mask)
-import numpy as np
-
 def interpolate_gaps(data, mask):
     #data = x_pos_train.copy()
     data_interp = data.copy()
@@ -264,6 +349,69 @@ def interpolate_gaps(data, mask):
                 ] = interp_vals
 
     return data_interp
+
+
+def crop_sequences(X, x_pos, n_samples):
+  total_samples = X.shape[2]
+  if not (0 < n_samples <= total_samples):
+    raise ValueError(
+        f"n_samples ({n_samples}) must be between 1 and {total_samples}."
+    )
+
+  start = int(np.floor(total_samples / 2 - n_samples / 2))
+  start = max(0, min(start, total_samples - n_samples))
+  end = start + n_samples
+
+  return X[:, :, start:end], x_pos[:, :, start:end]
+
+
+#--------------------------------------------
+# Model Training
+#--------------------------------------------
+
+from torch.utils.data import DataLoader
+import torch.optim as optim
+
+def train_model(dataset):
+    #dataset = train_dataset 
+    loader = DataLoader(dataset, batch_size=32, shuffle=True) #batch_size = number of trials per batch
+
+    model = EOGNet(n_channels=6)# #6 channels here = [blink data, saccade data, pursuit]x[2 eyes]dataset.X.shape[1]-6)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+    history = {
+        "train_acc": [],
+        "train_loss": []
+    }
+
+    # loss_pos_fn = nn.MSELoss()
+
+    for epoch in range(20):
+        total_loss = 0
+        for X, x_pos_norm, x_pos, x_speed in loader:
+            optimizer.zero_grad() # reset gradients at new batch (clear old gradients)
+            
+            pred_pos = model(X)
+
+            # x_evt = X[:, 2:, :]
+            blink_mask = X[:, 2:4, :] > 0
+            farpos_mask = (x_pos < -30) | (x_pos > 30)
+            valid_mask = ~blink_mask & ~farpos_mask
+
+            loss = ((pred_pos - x_pos_norm)**2)[valid_mask].mean() #MSE loss
+            # loss = loss_pos_fn(pred_pos, x_pos)
+
+            loss.backward() #compute new gradients
+            optimizer.step() #update weights
+
+            total_loss += loss.item()
+
+
+        history["train_loss"].append(total_loss)
+
+        print(f"Epoch {epoch+1} - Loss: {total_loss:.4f}")
+
+    return model, history
 
 def get_network_output(model, dataset, batch_size=32):
     loader = DataLoader(dataset, batch_size=batch_size)
@@ -1065,7 +1213,7 @@ import os
 import matplotlib.pyplot as plt
 
 def plot_invalid_values( training_data, speeds=None, durations=None, channel_idx=0, save_path=None, filename="invalid_values_by_speed_duration.png", ):
-    """ Plot the percentage of NaN/Inf values for each speed,
+    """ Plot the percentage of values outside +-30 deg range for each speed,
       with one subplot per duration. 
     Each bar represents the percentage of 
     invalid values across all trials for a given speed. 
@@ -1239,4 +1387,102 @@ def plot_invalid_values( training_data, speeds=None, durations=None, channel_idx
             bbox_inches="tight"
         )
 
+    plt.show()
+
+
+import os
+import os.path as op
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def plot_invalid_values_subj(all_x_pos, all_x_speed, all_subjects, sequence_lengths,
+                        speeds=None, channel_idx=0, limit=30,
+                        save_path=None,
+                        filename="invalid_values_by_speed_duration_participants.png"):
+    """
+    Percentage of samples outside +-limit (or non-finite) per speed, one subplot
+    per duration. Bars = mean across participants (error = SEM across
+    participants); dots = each participant's mean over their trials.
+
+    all_x_pos        : (trials, time) or (trials, channels, time)
+    all_x_speed      : (trials,) speed label per trial
+    all_subjects     : (trials,) participant id per trial
+    sequence_lengths : {duration_s: n_samples}
+    """
+    all_x_pos = np.asarray(all_x_pos)
+    speed_arr = np.asarray(all_x_speed)
+    if speed_arr.ndim > 1:                 # per-sample speed -> take the first sample
+        speed_arr = speed_arr.reshape(len(speed_arr), -1)[:, 0]
+    subjects = np.asarray(all_subjects)
+
+    if all_x_pos.ndim == 3:
+        all_x_pos = all_x_pos[:, channel_idx, :]
+
+    participants_u = list(dict.fromkeys(subjects))      # keeps original order
+    if speeds is None:
+        speeds = np.unique(speed_arr)
+    speeds = list(speeds)
+
+    colors = plt.get_cmap("tab10")(np.linspace(0, 1, max(len(participants_u), 2)))
+    rng = np.random.default_rng(0)
+
+    durations = sorted(sequence_lengths.keys())
+    fig, axes = plt.subplots(len(durations), 1,
+                             figsize=(14, 4 * len(durations)), squeeze=False)
+    axes = axes.flatten()
+
+    for ax, duration in zip(axes, durations):
+        n = sequence_lengths[duration]
+        x_crop = all_x_pos[:, :n]
+        #invalid = ~np.isfinite(x_crop) | (np.abs(x_crop) > limit)   # NaN/inf count too
+        invalid = (np.abs(x_crop) > limit) 
+
+        pct_trial = invalid.mean(axis=1) * 100                      # (trials,)
+
+        # participant x speed table of mean % invalid
+        table = np.full((len(participants_u), len(speeds)), np.nan)
+        for p, part in enumerate(participants_u):
+            for s, speed in enumerate(speeds):
+                m = (subjects == part) & (speed_arr == speed)
+                if m.any():
+                    table[p, s] = pct_trial[m].mean()
+
+        means = np.nanmean(table, axis=0)
+        n_valid = np.sum(~np.isnan(table), axis=0)
+        sems = np.nanstd(table, axis=0, ddof=1) / np.sqrt(np.maximum(n_valid, 1))
+
+        width = 0.8 * np.min(np.diff(speeds)) if len(speeds) > 1 else 0.8
+        bars = ax.bar(speeds, means, width=width, yerr=sems, capsize=5,
+                      color="lightgray", edgecolor="black", alpha=0.8, zorder=1)
+
+        # one dot per participant
+        for p, part in enumerate(participants_u):
+            xs = np.array(speeds) + rng.uniform(-width * 0.25, width * 0.25, len(speeds))
+            ax.scatter(xs, table[p], s=40, color=colors[p], edgecolor="black",
+                       linewidth=0.6, zorder=3, label=str(part))
+
+        for bar, m, e in zip(bars, means, sems):
+            if np.isfinite(m) and m > 0:
+                ax.text(bar.get_x() + bar.get_width() / 2,
+                        bar.get_height() + (e if np.isfinite(e) else 0),
+                        f"{m:.1f}%", ha="center", va="bottom", fontsize=9)
+
+        ax.set_title(f"Duration = {duration:.1f} s", fontsize=16, fontweight="bold")
+        ax.set_xlabel("Speed (°/s)", fontsize=13)
+        ax.set_ylabel(f"Values outside ±{limit} (%)", fontsize=13)
+        ax.set_xticks(speeds)
+        ax.grid(axis="y", alpha=0.3)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, title="Participant", loc="center right",
+               frameon=False)
+
+    fig.suptitle("Values outside ±%d across stimulus speeds and durations" % limit,
+                 fontsize=20, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 0.93, 0.97])
+
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(op.join(save_path, filename), dpi=300, bbox_inches="tight")
     plt.show()

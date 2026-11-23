@@ -1,120 +1,10 @@
 import numpy as np
-import torch
-from torch.utils.data import Dataset
 import os.path as op
 import sys
 
 current_dir = op.dirname(op.abspath(__file__))
 sys.path.append(current_dir)
 import utils.cnn_xpos_helpers as ch
-
-#-----------------------------
-# 1: Generate Pytorch Dataset
-#-----------------------------
-class EOGDataset(Dataset):
-    def __init__(self, X, x_pos_norm, x_pos, x_speed):
-        # X = X_train
-        # x_pos = x_pos_train
-
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.x_pos_norm = torch.tensor(x_pos_norm, dtype=torch.float32)
-        self.x_pos = torch.tensor(x_pos, dtype=torch.float32)
-        self.x_speed = torch.tensor(x_speed, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.x_pos_norm[idx], self.x_pos[idx], self.x_speed[idx]
-
-
-#----------------------    
-# 2: Model design
-#----------------------
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-class EOGNet(nn.Module):
-    def __init__(self, n_channels):
-        super().__init__()
-
-        self.conv1 = nn.Conv1d(n_channels, 16, kernel_size=9, padding=4)
-        self.conv2 = nn.Conv1d(16, 32, kernel_size=17, padding=8) #kernel_size=17, padding=8
-
-        # 🔥 correct head
-        self.head = nn.Conv1d(in_channels=32, out_channels=2, kernel_size=1)
-
-    def forward(self, x):
-        # x: (B, channels, T)
-        # X = torch.tensor(X, dtype=torch.float32)
-        # x = X
-        # conv1 = nn.Conv1d(6, 16, kernel_size=9, padding=4)
-        # conv2 = nn.Conv1d(16, 32, kernel_size=17, padding=8)
-        # Split
-        x_eog = x[:, :2, :]
-        blink_eog   = x_eog * x[:, 2:4, :]
-        sacc_eog    = x_eog * x[:, 4:6, :]
-        pursuit_eog = x_eog * x[:, 6:8, :]
-
-        # x = torch.cat([blink_eog, sacc_eog, pursuit_eog], dim=1)  # (B, 6, T)
-        x = torch.cat([blink_eog, sacc_eog, pursuit_eog], dim=1)  # (B, 6, T)
-        
-        # CNN
-        x = F.relu(self.conv1(x))   # (B, 16, T) x shape: B = 32, 16, T = 250
-        x = F.relu(self.conv2(x))   # (B, 32, T) x shape: B = 32, 32, T = 250 
-
-        # 🔥 NO flatten
-        x = self.head(x)            # (B, 2, T)
-
-        return x.squeeze(1)         # (B, T)
-#--------------------------------------------
-# Model Training
-#--------------------------------------------
-
-from torch.utils.data import DataLoader
-import torch.optim as optim
-
-def train_model(dataset):
-    #dataset = train_dataset 
-    loader = DataLoader(dataset, batch_size=32, shuffle=True) #batch_size = number of trials per batch
-
-    model = EOGNet(n_channels=6)# #6 channels here = [blink data, saccade data, pursuit]x[2 eyes]dataset.X.shape[1]-6)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-    history = {
-        "train_acc": [],
-        "train_loss": []
-    }
-
-    # loss_pos_fn = nn.MSELoss()
-
-    for epoch in range(20):
-        total_loss = 0
-        for X, x_pos_norm, x_pos, x_speed in loader:
-            optimizer.zero_grad() # reset gradients at new batch (clear old gradients)
-            
-            pred_pos = model(X)
-
-            # x_evt = X[:, 2:, :]
-            blink_mask = X[:, 2:4, :] > 0
-            farpos_mask = (x_pos < -30) | (x_pos > 30)
-            valid_mask = ~blink_mask & ~farpos_mask
-
-            loss = ((pred_pos - x_pos_norm)**2)[valid_mask].mean() #MSE loss
-            # loss = loss_pos_fn(pred_pos, x_pos)
-
-            loss.backward() #compute new gradients
-            optimizer.step() #update weights
-
-            total_loss += loss.item()
-
-
-        history["train_loss"].append(total_loss)
-
-        print(f"Epoch {epoch+1} - Loss: {total_loss:.4f}")
-
-    return model, history
 
 #-------------------------------
 #Prepare all participants data
@@ -149,17 +39,29 @@ all_subjects = np.concatenate(all_subjects, axis=0)
 # Check data and conditions
 #====================================================
 
-save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
-save_name = op.join('eyelink_traces_noblink.png')
-ch.plot_traces(all_x_pos, all_x_dir,
-    all_x_speed, all_subjects, save_path,
-    save_name,
-    channel_idx=0,
-    ylim = [-40, 40],
-    time=None,
-    alpha_trials=0.4,
-    alpha_subject=0.8
-)
+# save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
+# save_name = op.join('eyelink_traces_noblink.png')
+# ch.plot_traces(all_x_pos, all_x_dir,
+#     all_x_speed, all_subjects, save_path,
+#     save_name,
+#     channel_idx=0,
+#     ylim = [-40, 40],
+#     time=None,
+#     alpha_trials=0.4,
+#     alpha_subject=0.8
+# )
+
+# # Proportion of invalid data (>< 30 deg)
+# fs = 125
+
+# sequence_lengths = {
+#     0.5: int(0.5 * fs),
+#     1.0: int(1.0 * fs),
+#     1.5: int(1.5 * fs),
+#     2.0: int(2.0 * fs),
+# }
+# ch.plot_invalid_values_subj(all_x_pos, all_x_speed, all_subjects, sequence_lengths,
+#                     save_path=op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots'))
 
 #====================================================
 # Train, and then test the model after each iteration
@@ -174,29 +76,9 @@ sequence_lengths = {
     2.0: int(2.0 * fs),
 }
 
-def crop_sequences(X, x_pos, n_samples):
-    return (
-        X[:, :, :n_samples],
-        x_pos[:, :, :n_samples],
-    )
-
-
-#preallocate mean performance and mean category performances of each crossvalidation iteration 
-# crossvalit_mean_alldir_perfs = np.zeros([5,])
-# crossvalit_mean_allspeed_perfs = np.zeros([5,])
-# crossvalit_mean_dir_perfs = np.zeros([5,2])
-# crossvalit_mean_speed_perfs = np.zeros([5,16])
-#preallocate standard deviation of performance and standard deviations of category performances of each crossvalidation iteration 
-# crossvalit_std_alldir_perfs = np.zeros([5,])
-# crossvalit_std_allspeed_perfs = np.zeros([5,])
-# crossvalit_std_dir_perfs = np.zeros([5,2])
-# crossvalit_std_speed_perfs = np.zeros([5,16])
-#preallocate the training accuracy for each fold in every crossvalidation
-# alldir_training_accuracy = np.zeros([6,5])
-# allspeed_training_accuracy = np.zeros([6,5])
-# allpos_training_accuracy = np.zeros([6,5])
 
 training_data = {}
+test_data = {}
 results = {}
 
 for duration, n_samples in sequence_lengths.items():
@@ -209,6 +91,10 @@ for duration, n_samples in sequence_lengths.items():
     all_train_eog = []
     all_train_speed = []
     #testing
+    all_test_pos = []
+    all_test_eog = []
+    all_test_speed = []
+
     all_pred_pos = []
     all_true_pos = []
     all_true_speed = []
@@ -240,17 +126,9 @@ for duration, n_samples in sequence_lengths.items():
 
             #Crop sequences
 
-            X_train, x_pos_train = crop_sequences(
-            X_train,
-            x_pos_train,
-            n_samples
-            )
+            X_train, x_pos_train = ch.crop_sequences(X_train, x_pos_train, n_samples)
 
-            X_test, x_pos_test = crop_sequences(
-                X_test,
-                x_pos_test,
-                n_samples
-            )
+            X_test, x_pos_test = ch.crop_sequences(X_test, x_pos_test, n_samples)
 
             # ---------------------------------------------------
             # TRAIN
@@ -260,10 +138,8 @@ for duration, n_samples in sequence_lengths.items():
             #-----------------------------
             #Training data masks
             #mask 1 = blinks
-
             # x_evt = X_train[:, 2:, :]  # (B, 6, T)
-            blink_mask = X_train[:, 2:4, :] > 0
-            # valid_train_mask1 = ~blink_mask #keep everything that is not blink
+            blink_mask = X_train[:, 2:4, :] > 0 
 
             #mask 2 = eye position is far away from screen
             farpos_mask = (x_pos_train < -30) | (x_pos_train > 30)
@@ -317,10 +193,15 @@ for duration, n_samples in sequence_lengths.items():
             all_train_eog.append(X_train)
             all_train_speed.append(x_speed_train)
 
-            train_dataset = EOGDataset(X_train, x_pos_train_norm,  x_pos_train, x_speed_train) #Makes it pytorch compatible by converting from nyumpy arrays to torch tensors
-            test_dataset  = EOGDataset(X_test,  x_pos_test_norm, x_pos_test, x_speed_test)
+            #save TEST data eye X pos and eog X 
+            all_test_pos.append(x_pos_test_norm)
+            all_test_eog.append(X_test)
+            all_test_speed.append(x_speed_test)
 
-            model, history = train_model(train_dataset)
+            train_dataset = ch.EOGDataset(X_train, x_pos_train_norm,  x_pos_train, x_speed_train) #Makes it pytorch compatible by converting from nyumpy arrays to torch tensors
+            test_dataset  = ch.EOGDataset(X_test,  x_pos_test_norm, x_pos_test, x_speed_test)
+
+            model, history = ch.train_model(train_dataset)
 
             # 🔹 predictions
             pred_pos, x_pos_norm, x_speed = ch.get_network_output(model, test_dataset)
@@ -354,6 +235,11 @@ for duration, n_samples in sequence_lengths.items():
         "training_x_pos" : np.concatenate(all_train_pos),
         "training_eog": np.concatenate(all_train_eog),
         "training_speed": np.concatenate(all_train_speed)
+    }
+    test_data[duration] = {
+        "training_x_pos" : np.concatenate(all_test_pos),
+        "training_eog": np.concatenate(all_test_eog),
+        "training_speed": np.concatenate(all_test_speed)
     }
 
     results[duration] = {
@@ -408,7 +294,6 @@ ch.plot_pred_vs_true_position_clouds(
     ylim=None,
 )
 
-
 # ==================
 #Plot RMSE per speed across cross-validations
 # ================== 
@@ -424,9 +309,9 @@ ch.plot_speed_rmse_duration_comparison(results, participant_colors,
                                    save_path=save_path,
                                    filename="speed_specific_prediction_rmse_by_duration.png")
 
-#==========================================================
-#Plot amount of NaN or infinite values within training data
-#==========================================================
+#===============================================================
+#Plot amount of data beyond +- 30 deg range within training data
+#===============================================================
 
 import os
 import matplotlib.pyplot as plt
@@ -434,15 +319,13 @@ import matplotlib.pyplot as plt
 save_path = op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots')
 
 ch.plot_invalid_values(
-    training_data,
+    test_data,
     speeds=None,
     durations=None,
     channel_idx=0,
     save_path=save_path,
-    filename="invalid_values_per_trial.png",
+    filename="invalid_test_values_per_trial.png",
 )
-
-
 
 
 #### Plot training data ! here we need to check if normalization impacted some trials.
