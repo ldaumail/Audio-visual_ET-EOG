@@ -466,26 +466,56 @@ def get_pos_performance(pred_pos, x_pos):
     return rmse
 
 
-def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
-    pred_pos = pred_pos.squeeze()
-
+def get_pos_performance_per_speed(pred_pos, x_pos, x_speed, valid, scale=1.0):
+    """valid: boolean (N, 2, T), True = usable sample.
+    scale: xpos_std of the training fold, to return RMSE in degrees."""
     speed_list = np.unique(x_speed)
-    rmse_per_speed = np.full(len(speed_list), np.nan)
-
+    rmse = np.full(len(speed_list), np.nan)
     for i, speed in enumerate(speed_list):
+        idx = (x_speed[:, None, None] == speed) & valid
+        if idx.any():
+            rmse[i] = np.sqrt(np.mean((pred_pos[idx] - x_pos[idx]) ** 2)) * scale
+    return rmse
 
-        idx = (
-        (x_speed[:, None, None] == speed) &
-        (~np.isnan(pred_pos)) &
-        (~np.isnan(x_pos))
+# def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
+#     pred_pos = pred_pos.squeeze()
+
+#     speed_list = np.unique(x_speed)
+#     rmse_per_speed = np.full(len(speed_list), np.nan)
+
+#     for i, speed in enumerate(speed_list):
+
+#         idx = (
+#         (x_speed[:, None, None] == speed) &
+#         (~np.isnan(pred_pos)) &
+#         (~np.isnan(x_pos))
+#         )
+
+#         if np.any(idx):
+#             rmse_per_speed[i] = np.sqrt(
+#                 np.mean((pred_pos[idx] - x_pos[idx])**2)
+#             )
+
+#     return rmse_per_speed
+
+def per_speed_summary(res, xpos_std):
+    pred, true = res["pred_pos"], res["true_pos"]            # normalized
+    spd = np.asarray(res["true_speed"]).reshape(len(pred), -1)[:, 0]
+    out = {}
+    for s in np.unique(spd):
+        m = spd == s
+        p, t = pred[m].ravel(), true[m].ravel()
+        v = np.isfinite(p) & np.isfinite(t)
+        p, t = p[v], t[v]
+        mse = np.mean((p - t) ** 2)
+        out[s] = dict(
+            rmse_deg = np.sqrt(mse) * xpos_std,   # use the training-fold mean std
+            target_sd = t.std(),                  # spread of the target
+            r2 = 1 - mse / t.var(),               # relative to a constant predictor
+            slope = np.polyfit(t, p, 1)[0],       # <1 means shrinkage
+            r = np.corrcoef(t, p)[0, 1],
         )
-
-        if np.any(idx):
-            rmse_per_speed[i] = np.sqrt(
-                np.mean((pred_pos[idx] - x_pos[idx])**2)
-            )
-
-    return rmse_per_speed
+    return out
 
 def get_network_cat_performance(pred_out, targets, n_classes):
     pred_labels = np.argmax(pred_out, axis=1)
@@ -1264,13 +1294,9 @@ def plot_invalid_values( training_data, speeds=None, durations=None, channel_idx
         # --------------------------------------------------------
         for speed in speeds:
 
-            speed_mask = (
-                training_data[duration]["training_speed"] == speed
-            )
+            speed_mask = (training_data[duration]["training_speed"] == speed)
 
-            x_pos = (
-                training_data[duration]["training_x_pos"][speed_mask]
-            )
+            x_pos = (training_data[duration]["training_x_pos"][speed_mask])
 
             # ----------------------------------------------------
             # Select channel if necessary
@@ -1431,10 +1457,16 @@ def plot_invalid_values_subj(all_x_pos, all_x_speed, all_subjects, sequence_leng
     fig, axes = plt.subplots(len(durations), 1,
                              figsize=(14, 4 * len(durations)), squeeze=False)
     axes = axes.flatten()
-
+    fs = 125
     for ax, duration in zip(axes, durations):
         n = sequence_lengths[duration]
-        x_crop = all_x_pos[:, :n]
+        # x_crop = all_x_pos[:, :n]
+        total_samples = all_x_pos.shape[1]
+        n_samples = int(duration*fs)
+        start = int(np.floor(total_samples / 2 - n_samples / 2))
+        start = max(0, min(start, total_samples - n_samples))
+        end = start + n_samples
+        x_crop = all_x_pos[:, start:end]
         #invalid = ~np.isfinite(x_crop) | (np.abs(x_crop) > limit)   # NaN/inf count too
         invalid = (np.abs(x_crop) > limit) 
 
