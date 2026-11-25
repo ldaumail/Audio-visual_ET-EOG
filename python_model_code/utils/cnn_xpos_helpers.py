@@ -498,9 +498,9 @@ def get_pos_performance_per_speed(pred_pos, x_pos, x_speed, valid, scale=1.0):
 
 #     return rmse_per_speed
 
-def per_speed_summary(res, xpos_std):
-    pred, true = res["pred_pos"], res["true_pos"]            # normalized
-    spd = np.asarray(res["true_speed"]).reshape(len(pred), -1)[:, 0]
+def per_speed_summary(summary_data, xpos_std):
+    pred, true = summary_data["pred_pos"], summary_data["true_pos"]            # normalized
+    spd = np.asarray(summary_data["true_speed"]).reshape(len(pred), -1)[:, 0]
     out = {}
     for s in np.unique(spd):
         m = spd == s
@@ -845,6 +845,89 @@ def plot_speed_rmse_duration_comparison(results,
         )
 
     plt.show()
+
+# ==================
+#Plot various summary stats
+# ==================
+import os
+import os.path as op
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def plot_summary_metric(summary_df, metric, speeds=range(5, 21),
+                        unit="iteration", color="lightgray", dot_color="black",
+                        save_path=None, filename=None, ylim=None, seed=0):
+    """
+    Bars = mean, error bars = SEM, dots = individual units.
+
+    unit="iteration":   dots are CV iterations (each averaged over test participants).
+    unit="participant": dots are test participants (each averaged over CV iterations).
+    SEM is computed across the dots.
+    """
+    METRIC_INFO = {
+    "rmse_deg":  dict(label="RMSE (deg)",            ref=None),
+    "r2":        dict(label="R² (vs constant)",      ref=0),
+    "target_sd": dict(label="Target SD (normalized)", ref=None),
+    "slope":     dict(label="Slope (pred vs true)",  ref=1),
+    "r":         dict(label="Pearson r",             ref=None),
+    }
+    info = METRIC_INFO.get(metric, dict(label=metric, ref=None))
+    speeds = list(speeds)
+    rng = np.random.default_rng(seed)
+
+    group_cols = ["duration", "speed", unit]
+    df = (summary_df[summary_df["speed"].isin(speeds)]
+          .groupby(group_cols, as_index=False)[metric]
+          .mean())
+
+    durations = sorted(df["duration"].unique())
+    fig, axes = plt.subplots(len(durations), 1, sharey=True, squeeze=False,
+                             figsize=(14, 4 * len(durations)))
+    axes = axes.flatten()
+
+    for ax, dur in zip(axes, durations):
+        d = df[df["duration"] == dur]
+
+        for i, sp in enumerate(speeds):
+            vals = d.loc[d["speed"] == sp, metric].dropna().to_numpy()
+            if len(vals) == 0:
+                continue
+            mean = vals.mean()
+            sem = vals.std(ddof=1) / np.sqrt(len(vals)) if len(vals) > 1 else 0.0
+
+            ax.bar(i, mean, width=0.7, color=color, edgecolor="black",
+                   linewidth=1, alpha=0.8, zorder=1)
+            ax.errorbar(i, mean, yerr=sem, color="black", capsize=3,
+                        linewidth=1.5, capthick=1.5, zorder=3)
+            ax.scatter(i + rng.uniform(-0.2, 0.2, len(vals)), vals,
+                       s=22, color=dot_color, edgecolor="white",
+                       linewidth=0.4, alpha=0.85, zorder=4)
+
+        if info["ref"] is not None:
+            ax.axhline(info["ref"], color="gray", linestyle="--", linewidth=1)
+
+        ax.set_xticks(range(len(speeds)))
+        ax.set_xticklabels(speeds)
+        ax.set_xlim(-0.7, len(speeds) - 0.3)
+        ax.set_title(f"Duration = {dur:.1f} s", fontsize=16, fontweight="bold")
+        ax.set_xlabel("Target speed (deg/s)", fontsize=13)
+        ax.set_ylabel(info["label"], fontsize=13)
+        ax.grid(axis="y", alpha=0.3, zorder=0)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+
+    fig.suptitle(f"{info['label']} across speeds and durations "
+                 f"(mean ± SEM, dots = {unit}s)",
+                 fontsize=20, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(op.join(save_path, filename or f"summary_{metric}_{unit}.png"),
+                    dpi=300, bbox_inches="tight")
+    plt.show()
+
 
 #========================================================================================
 #Plot predicted vs true traces

@@ -227,8 +227,8 @@ for duration, n_samples in sequence_lengths.items():
             # perf_cat_speed = ch.get_pos_performance_per_speed(pred_pos, x_pos_norm, x_speed)
             perf_cat_speed = ch.get_pos_performance_per_speed(pred_pos, x_pos_norm, x_speed, valid=~test_mask, scale=xpos_std)
 
-            eye_data = dict(pred_pos=pred_pos, true_pos=x_pos_norm, true_speed=x_speed)
-            summary_perf = ch.per_speed_summary(eye_data, xpos_std)
+            summary_data = dict(pred_pos=pred_pos, true_pos=x_pos_norm, true_speed=x_speed)
+            summary_perf = ch.per_speed_summary(summary_data, xpos_std)
             # 🔹 store
             crossvalit_allpos_perfs[t, it] = perf_speed #total rmse
             crossvalit_speed_perfs[t, :, it] = perf_cat_speed #rmse per speed
@@ -318,6 +318,12 @@ ch.plot_speed_rmse_duration_comparison(results, participant_colors,
                                    save_path=save_path,
                                    filename="speed_specific_prediction_rmse_by_duration.png")
 
+import pandas as pd
+# one figure per metric
+summary_df = pd.DataFrame(summary_rows)
+for m in ["rmse_deg", "r2", "target_sd", "slope", "r"]:
+    ch.plot_summary_metric(summary_df, m, unit="participant",
+                        save_path=op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots'))
 #===============================================================
 #Plot amount of data beyond +- 30 deg range within training data
 #===============================================================
