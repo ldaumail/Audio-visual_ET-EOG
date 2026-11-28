@@ -413,6 +413,7 @@ def train_model(dataset):
 
     return model, history
 
+#Predict eye position with test data
 def get_network_output(model, dataset, batch_size=32):
     loader = DataLoader(dataset, batch_size=batch_size)
     
@@ -448,6 +449,29 @@ def get_network_output(model, dataset, batch_size=32):
 
     return pred_pos, x_pos_norm, x_speed
 
+
+def rmse_by_position_bin(pred_norm, true_deg, speed, valid, xpos_mean, xpos_std,
+                         bins=np.arange(-20, 25, 5), min_n=50):
+    """
+    pred_norm : (N, 2, T) normalized predictions
+    true_deg  : (N, 2, T) raw Eyelink position in degrees (x_pos_test, cropped)
+    speed     : (N,) target speed per trial
+    valid     : (N, 2, T) True = usable sample (~test_mask)
+    Returns rows with RMSE in degrees per speed x position bin.
+    """
+    pred_deg = pred_norm * xpos_std + xpos_mean      # absolute degrees
+    centers = (bins[:-1] + bins[1:]) / 2
+    rows = []
+    for s in np.unique(speed):
+        m = (speed[:, None, None] == s) & valid
+        for b in range(len(bins) - 1):
+            mb = m & (true_deg >= bins[b]) & (true_deg < bins[b + 1])
+            if mb.sum() >= min_n:
+                rows.append(dict(
+                    speed=s, bin=centers[b], n=int(mb.sum()),
+                    rmse_deg=np.sqrt(np.mean((pred_deg[mb] - true_deg[mb]) ** 2))))
+    return rows
+
 def get_direction_performance(pred_dir, y_dir):
     pred_labels = np.argmax(pred_dir, axis=1)
     acc = np.mean(pred_labels == y_dir)
@@ -476,27 +500,6 @@ def get_pos_performance_per_speed(pred_pos, x_pos, x_speed, valid, scale=1.0):
         if idx.any():
             rmse[i] = np.sqrt(np.mean((pred_pos[idx] - x_pos[idx]) ** 2)) * scale
     return rmse
-
-# def get_pos_performance_per_speed(pred_pos, x_pos, x_speed):
-#     pred_pos = pred_pos.squeeze()
-
-#     speed_list = np.unique(x_speed)
-#     rmse_per_speed = np.full(len(speed_list), np.nan)
-
-#     for i, speed in enumerate(speed_list):
-
-#         idx = (
-#         (x_speed[:, None, None] == speed) &
-#         (~np.isnan(pred_pos)) &
-#         (~np.isnan(x_pos))
-#         )
-
-#         if np.any(idx):
-#             rmse_per_speed[i] = np.sqrt(
-#                 np.mean((pred_pos[idx] - x_pos[idx])**2)
-#             )
-
-#     return rmse_per_speed
 
 def per_speed_summary(summary_data, xpos_std):
     pred, true = summary_data["pred_pos"], summary_data["true_pos"]            # normalized
@@ -855,7 +858,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def plot_summary_metric(summary_df, metric, speeds=range(5, 21),
+def plot_summary_metric(summary_df, metric, model, speeds=range(5, 21),
                         unit="iteration", color="lightgray", dot_color="black",
                         save_path=None, filename=None, ylim=None, seed=0):
     """
@@ -924,10 +927,83 @@ def plot_summary_metric(summary_df, metric, speeds=range(5, 21),
 
     if save_path is not None:
         os.makedirs(save_path, exist_ok=True)
-        plt.savefig(op.join(save_path, filename or f"summary_{metric}_{unit}.png"),
+        plt.savefig(op.join(save_path, filename or f"summary_{metric}_{unit}_{model}.png"),
                     dpi=300, bbox_inches="tight")
     plt.show()
 
+# ==================
+# Plot rmse binned within 5 deg windows
+# ==================
+import os
+import os.path as op
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
+
+def plot_bin_rmse(rmse_df, model, speeds=range(5, 21), unit="participant",
+                  cmap="viridis", min_units=3, show_dots=False,
+                  save_path=None, filename=None, ylim=None):
+    """
+    One subplot per duration. x = position bin center (deg), one line per speed.
+    Line = mean across units, shaded band = SEM across units.
+
+    unit="participant": units = test participants (each averaged over iterations)
+    unit="iteration":   units = CV iterations (each averaged over participants)
+    min_units: a bin is drawn only if at least this many units contribute.
+    """
+    metric = "rmse_deg"
+    speeds = list(speeds)
+    norm = Normalize(vmin=min(speeds), vmax=max(speeds))
+    cm = plt.get_cmap(cmap)
+
+    # average within unit first, so each unit counts once per (duration, speed, bin)
+    df = (rmse_df[rmse_df["speed"].isin(speeds)]
+          .groupby(["duration", "speed", "bin", unit], as_index=False)[metric]
+          .mean())
+
+    durations = sorted(df["duration"].unique())
+    fig, axes = plt.subplots(len(durations), 1, sharex=True, sharey=True,
+                             squeeze=False, figsize=(10, 4 * len(durations)))
+    axes = axes.flatten()
+
+    for ax, dur in zip(axes, durations):
+        d = df[df["duration"] == dur]
+        for sp in speeds:
+            ds = d[d["speed"] == sp]
+            g = ds.groupby("bin")[metric]
+            stats = g.agg(["mean", "std", "count"])
+            stats = stats[stats["count"] >= min_units]      # drop sparsely covered bins
+            if stats.empty:
+                continue
+            sem = stats["std"] / np.sqrt(stats["count"])
+            c = cm(norm(sp))
+            ax.plot(stats.index, stats["mean"], "-o", color=c,
+                    linewidth=1.8, markersize=4)
+            ax.fill_between(stats.index, stats["mean"] - sem, stats["mean"] + sem,
+                            color=c, alpha=0.15, linewidth=0)
+            if show_dots:
+                ax.scatter(ds["bin"], ds[metric], s=10, color=c, alpha=0.4)
+
+        ax.set_title(f"Duration = {dur:.1f} s", fontsize=16, fontweight="bold")
+        ax.set_ylabel("RMSE (deg)", fontsize=13)
+        ax.grid(alpha=0.3)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+
+    axes[-1].set_xlabel("True eye position bin center (deg)", fontsize=13)
+
+    fig.suptitle(f"RMSE by position bin and target speed (mean ± SEM, units = {unit}s)",
+                 fontsize=18, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 0.92, 0.97])
+    cbar = fig.colorbar(ScalarMappable(norm=norm, cmap=cm), ax=axes, pad=0.02)
+    cbar.set_label("Target speed (deg/s)", fontsize=13)
+
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(op.join(save_path, filename or f"bin_rmse_{unit}_{model}.png"),
+                    dpi=300, bbox_inches="tight")
+    plt.show()
 
 #========================================================================================
 #Plot predicted vs true traces

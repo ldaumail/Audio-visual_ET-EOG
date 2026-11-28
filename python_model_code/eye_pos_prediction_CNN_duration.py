@@ -52,16 +52,16 @@ all_subjects = np.concatenate(all_subjects, axis=0)
 # )
 
 # # Proportion of invalid data (>< 30 deg)
-fs = 125
+# fs = 125
 
-sequence_lengths = {
-    0.5: int(0.5 * fs),
-    1.0: int(1.0 * fs),
-    1.5: int(1.5 * fs),
-    2.0: int(2.0 * fs),
-}
-ch.plot_invalid_values_subj(all_x_pos, all_x_speed, all_subjects, sequence_lengths,
-                    save_path=op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots'))
+# sequence_lengths = {
+#     0.5: int(0.5 * fs),
+#     1.0: int(1.0 * fs),
+#     1.5: int(1.5 * fs),
+#     2.0: int(2.0 * fs),
+# }
+# ch.plot_invalid_values_subj(all_x_pos, all_x_speed, all_subjects, sequence_lengths,
+#                     save_path=op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots'))
 
 #====================================================
 # Train, and then test the model after each iteration
@@ -82,6 +82,7 @@ test_data = {}
 eye_data = {}
 results = {}
 summary_rows = []
+bin_rmse_rows = []
 
 for duration, n_samples in sequence_lengths.items():
 
@@ -226,15 +227,19 @@ for duration, n_samples in sequence_lengths.items():
             # 🔹 category performance
             # perf_cat_speed = ch.get_pos_performance_per_speed(pred_pos, x_pos_norm, x_speed)
             perf_cat_speed = ch.get_pos_performance_per_speed(pred_pos, x_pos_norm, x_speed, valid=~test_mask, scale=xpos_std)
-
             summary_data = dict(pred_pos=pred_pos, true_pos=x_pos_norm, true_speed=x_speed)
             summary_perf = ch.per_speed_summary(summary_data, xpos_std)
+
             # 🔹 store
             crossvalit_allpos_perfs[t, it] = perf_speed #total rmse
             crossvalit_speed_perfs[t, :, it] = perf_cat_speed #rmse per speed
             for speed, metrics in summary_perf.items():
                 summary_rows.append(dict(duration=duration, iteration=it, participant=test_participant, speed=speed, **metrics))
-            
+
+            # compute rmse per 5 deg bins of true gaze location to see if the rmse depends on speed and see if the model performance depends on speed
+            bin_rows = ch.rmse_by_position_bin(pred_pos, x_pos_test, x_speed, ~test_mask, xpos_mean, xpos_std)
+            for r in bin_rows:
+                bin_rmse_rows.append(dict(duration=duration, iteration=it, participant=test_participant, **r))
 
             # 🔹 training accuracy (last epoch)
             # alldir_training_accuracy[t, it] = history["train_acc"][-1]
@@ -304,7 +309,7 @@ ch.plot_pred_vs_true_position_clouds(
 )
 
 # ==================
-#Plot RMSE per speed across cross-validations
+# Plot RMSE per speed across cross-validations
 # ================== 
 
 import matplotlib.pyplot as plt
@@ -324,6 +329,13 @@ summary_df = pd.DataFrame(summary_rows)
 for m in ["rmse_deg", "r2", "target_sd", "slope", "r"]:
     ch.plot_summary_metric(summary_df, m, unit="participant",
                         save_path=op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots'))
+
+import pandas as pd
+# one figure per metric
+bin_rmse_df = pd.DataFrame(bin_rmse_rows)
+ch.plot_bin_rmse(bin_rmse_df, unit="participant",
+                    save_path=op.join('/Users', 'ldaumail3', 'Documents', 'research', 'eyetracking_EOG', 'Audio_Visual_EOG-main', 'analysis_plots'))
+
 #===============================================================
 #Plot amount of data beyond +- 30 deg range within training data
 #===============================================================
